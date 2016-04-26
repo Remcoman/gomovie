@@ -14,11 +14,11 @@ type Frame struct {
 	Index int
 }
 
-func (this *Frame) ToNRGBAImage() *image.NRGBA {
+func (f *Frame) ToNRGBAImage() *image.NRGBA {
 	return &image.NRGBA{
-		Pix : this.Bytes,
-		Stride : this.Width * 4,
-		Rect : image.Rect(0, 0, this.Width, this.Height),
+		Pix : f.Bytes,
+		Stride : f.Width * 4,
+		Rect : image.Rect(0, 0, f.Width, f.Height),
 	}
 }
 
@@ -32,17 +32,17 @@ type Grabber struct {
 	index int
 }
 
-func (this *Grabber) Open() error {
-	if info, err := ExtractInfo(this.Path); err != nil {
+func (g *Grabber) Open() error {
+	if info, err := ExtractInfo(g.Path); err != nil {
 		return err
 	} else {
-		this.Info = info
+		g.Info = info
 	}
 	
-	this.cmd = exec.Command(
-		"/usr/bin/ffmpeg",
+	g.cmd = exec.Command(
+		FfmpegPath,
 		
-		"-i", this.Path, 
+		"-i", g.Path, 
 		"-loglevel", "error", 
 		"-f", "image2pipe",
 		"-pix_fmt", "rgba",
@@ -50,43 +50,45 @@ func (this *Grabber) Open() error {
 		"-",
 	)
 	
-	if stderr, err := this.cmd.StderrPipe(); err != nil {
+	if stderr, err := g.cmd.StderrPipe(); err != nil {
 		return err
 	} else {
-		this.stderr = stderr
+		g.stderr = stderr
 	}
 	
-	if stdout, err := this.cmd.StdoutPipe(); err != nil {
+	if stdout, err := g.cmd.StdoutPipe(); err != nil {
 		return err
 	} else {
-		this.stdout = stdout
+		g.stdout = stdout
 	}
 	
-	if err := this.cmd.Start(); err != nil {
+	if err := g.cmd.Start(); err != nil {
 		return err
 	}
 	
 	go func() {
-		err := this.cmd.Wait()
+		err := g.cmd.Wait()
 		fmt.Println(err)
 	}()
 	
 	return nil
 }
 
-func (this *Grabber) GetFrame() Frame {
-	bytes := make([]byte, 4*this.Info.Width*this.Info.Height)
+func (g *Grabber) GetFrame() (*Frame, error) {
+	bytes := make([]byte, 4*g.Info.Width*g.Info.Height)
 	
-	io.ReadFull(this.stdout, bytes)
-	
-	this.index = this.index + 1
-	
-	return Frame {
-		Bytes : bytes,
-		Width : this.Info.Width,
-		Height : this.Info.Height,
-		Index : this.index,
+	if _, err := io.ReadFull(g.stdout, bytes); err != nil {
+		return nil, err
 	}
+	
+	g.index = g.index + 1
+	
+	return &Frame{
+		Bytes : bytes,
+		Width : g.Info.Width,
+		Height : g.Info.Height,
+		Index : g.index,
+	}, nil
 }
 
 func CreateGrabber(path string) Grabber {
