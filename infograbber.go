@@ -1,24 +1,25 @@
-
 package gomovie
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
-	"encoding/json"
-	"strings"
 	"strconv"
+	"strings"
 )
 
 type Info struct {
-	Width int
-	Height int
-	Filename string
-	Duration float32
+	Width     int
+	Height    int
+	Filename  string
+	Duration  float32
 	FrameRate float32
+	Rotation  int
 }
 
-func (this Info) String() string {
-	return fmt.Sprintf("Info about %s -> Width: %d, Height : %d, Duration : %f, Framerate : %f", this.Filename, this.Width, this.Height, this.Duration, this.FrameRate)
+func (i Info) String() string {
+	return fmt.Sprintf("Info about %s -> Width: %d, Height : %d, Duration : %f, Framerate : %f", i.Filename, i.Width, i.Height, i.Duration, i.FrameRate)
 }
 
 type FFProbeFormat struct {
@@ -26,63 +27,100 @@ type FFProbeFormat struct {
 	Duration string
 }
 
-func (this FFProbeFormat) getDuration() float32 {
-	dur, _ := strconv.ParseFloat(this.Duration, 32)
+func (f FFProbeFormat) getDuration() float32 {
+	dur, _ := strconv.ParseFloat(f.Duration, 32)
 	return float32(dur)
 }
 
 type FFProbeStream struct {
-	Width int
-	Height int
+	Width          int
+	Height         int
 	Avg_frame_rate string
+	Codec_type     string
+	Side_data_list []interface{}
 }
 
-func (this FFProbeStream) getFrameRate() float32 {
-	parts := strings.Split(this.Avg_frame_rate, "/")
+func (f FFProbeStream) getRotation() int {
+	if len(f.Side_data_list) > 0 {
+		//find display matrix element
+		for _, v := range f.Side_data_list {
+			side_data_el := v.(map[string]interface{})
+
+			side_data_type := side_data_el["side_data_type"].(string)
+
+			if side_data_type != "Display Matrix" {
+				continue
+			}
+
+			return side_data_el["rotation"].(int)
+		}
+	}
+
+	return 0
+}
+
+func (f FFProbeStream) getFrameRate() float32 {
+	parts := strings.Split(f.Avg_frame_rate, "/")
 	first, _ := strconv.ParseFloat(parts[0], 32)
 	last, _ := strconv.ParseFloat(parts[1], 32)
 	return float32(first / last)
 }
 
 type FFProbeOutput struct {
-	Format FFProbeFormat
+	Format  FFProbeFormat
 	Streams []FFProbeStream
+}
+
+func (o *FFProbeOutput) getVideoStream() *FFProbeStream {
+	for _, stream := range o.Streams {
+		if stream.Codec_type == "video" {
+			return &stream
+		}
+	}
+	return nil
 }
 
 func ExtractInfo(path string) (info *Info, err error) {
 	cmd := exec.Command(
 		FfprobePath,
-		
-		"-i", path, 
-		
-		"-print_format", "json", 
-		
+
+		"-i", path,
+
+		"-print_format", "json",
+
 		"-show_streams",
 		"-show_format",
-		 
-		"-select_streams", "v", 
-		 
+
+		"-select_streams", "v",
+
 		"-v", "quiet",
 	)
-	
+
 	bytes, err := cmd.Output()
-	
+
 	if err != nil {
 		return
 	}
-	
+
 	var out FFProbeOutput
 	if err = json.Unmarshal(bytes, &out); err != nil {
 		return
 	}
-	
-	info = &Info{
-		Width : int(out.Streams[0].Width),
-		Height : int(out.Streams[0].Height),
-		FrameRate : out.Streams[0].getFrameRate(),
-		Duration : out.Format.getDuration(),
-		Filename : out.Format.Filename,
+
+	videoStream := out.getVideoStream()
+	if videoStream == nil {
+		err = errors.New("No video stream found!")
+		return
 	}
-	
+
+	info = &Info{
+		Width:     int(videoStream.Width),
+		Height:    int(videoStream.Height),
+		FrameRate: videoStream.getFrameRate(),
+		Duration:  out.Format.getDuration(),
+		Filename:  out.Format.Filename,
+		Rotation:  videoStream.getRotation(),
+	}
+
 	return
 }
