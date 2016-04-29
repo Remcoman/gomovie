@@ -32,6 +32,12 @@ type Grabber struct {
 	index int
 }
 
+func (g *Grabber) Close() {
+	if err := g.cmd.Process.Kill(); err != nil {
+		panic(err)
+	}
+}
+
 func (g *Grabber) Open() error {
 	if info, err := ExtractInfo(g.Path); err != nil {
 		return err

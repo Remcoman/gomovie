@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/Remcoman/gomovie"
 	"image/png"
 	"os"

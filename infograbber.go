@@ -3,10 +3,12 @@ package gomovie
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"fmt"
 	"os/exec"
 	"strconv"
 	"strings"
+	"math"
 )
 
 type Info struct {
@@ -19,7 +21,14 @@ type Info struct {
 }
 
 func (i Info) String() string {
-	return fmt.Sprintf("Info about %s -> Width: %d, Height : %d, Duration : %f, Framerate : %f", i.Filename, i.Width, i.Height, i.Duration, i.FrameRate)
+	return fmt.Sprintf("Info about %s -> Width: %d, Height : %d, Duration : %f, Framerate : %f, Rotation: %d", 
+		i.Filename, 
+		i.Width, 
+		i.Height, 
+		i.Duration, 
+		i.FrameRate,
+		i.Rotation,
+	)
 }
 
 type FFProbeFormat struct {
@@ -38,21 +47,28 @@ type FFProbeStream struct {
 	Avg_frame_rate string
 	Codec_type     string
 	Side_data_list []interface{}
+	Tags		   map[string]interface{}
 }
 
 func (f FFProbeStream) getRotation() int {
 	if len(f.Side_data_list) > 0 {
 		//find display matrix element
 		for _, v := range f.Side_data_list {
-			side_data_el := v.(map[string]interface{})
+			sideDataEl := v.(map[string]interface{})
 
-			side_data_type := side_data_el["side_data_type"].(string)
-
-			if side_data_type != "Display Matrix" {
+			sideDataType := sideDataEl["side_data_type"].(string)
+			
+			if sideDataType != "Display Matrix" {
 				continue
 			}
-
-			return side_data_el["rotation"].(int)
+			
+			return int(sideDataEl["rotation"].(float64))
+		}
+	} else {
+		if f.Tags != nil {
+			if rotate, err := strconv.ParseInt(f.Tags["rotate"].(string), 10, 32); err == nil && rotate != 0 {
+				log.Print("Rotate tag found but display matrix seems missing. It seems you are using a old ffmpeg version?")
+			}
 		}
 	}
 
@@ -112,14 +128,24 @@ func ExtractInfo(path string) (info *Info, err error) {
 		err = errors.New("No video stream found!")
 		return
 	}
+	
+	rotation := videoStream.getRotation()
+	width := int(videoStream.Width)
+	height := int(videoStream.Height)
+
+	if math.Abs(math.Mod(float64(rotation), 180.)) == 90 {
+		oldWidth := width
+		width = height
+		height = oldWidth 	
+	} 
 
 	info = &Info{
-		Width:     int(videoStream.Width),
-		Height:    int(videoStream.Height),
+		Width:     width,
+		Height:    height,
 		FrameRate: videoStream.getFrameRate(),
 		Duration:  out.Format.getDuration(),
 		Filename:  out.Format.Filename,
-		Rotation:  videoStream.getRotation(),
+		Rotation:  rotation,
 	}
 
 	return
