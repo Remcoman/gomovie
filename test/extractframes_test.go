@@ -8,15 +8,14 @@ import (
 )
 
 func TestFrame2Png(t *testing.T) {
-	video := os.Getenv("GOMOVIE_VIDEO")
-	if video == "" {
+	path := os.Getenv("GOMOVIE_VIDEO")
+	if path == "" {
 		t.Fatal("GOMOVIE_VIDEO not set!")
 	}
 
-	grabber := gomovie.CreateGrabber(video)
-	grabber.Open()
+	video := gomovie.OpenVideo(path)
 
-	frame, err := grabber.GetFrame()
+	frame, err := video.ReadFrame()
 
 	if err != nil {
 		t.Fatal("Could not get frame from video")

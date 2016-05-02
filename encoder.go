@@ -9,7 +9,7 @@ import (
 	"io"
 )
 
-type Writer struct {
+type Encoder struct {
 	Path string
 	FfmpegArgs []string
 	
@@ -17,13 +17,13 @@ type Writer struct {
 	stdin io.WriteCloser
 }
 
-func (w *Writer) Close() {
+func (w *Encoder) Close() {
 	if err := w.cmd.Process.Kill(); err != nil {
 		panic(err)
 	}
 }
 
-func (w *Writer) Open() error {
+func (w *Encoder) Open() error {
 	w.cmd = exec.Command(FfmpegPath, "yo")
 	
 	w.cmd.Start()
@@ -43,12 +43,12 @@ func (w *Writer) Open() error {
 	return nil
 }
 
-func (w *Writer) WriteNRGBABytes(bytes []byte) {
+func (w *Encoder) WriteNRGBABytes(bytes []byte) {
 	//TODO add validation of byte data
 	w.stdin.Write(bytes)
 }
 
-func (w *Writer) WriteImage(img image.Image) error {
+func (w *Encoder) WriteImage(img image.Image) error {
 	var bytes *[]byte
 	
 	switch t := img.(type) {
@@ -65,10 +65,6 @@ func (w *Writer) WriteImage(img image.Image) error {
 	return nil
 }
 
-func (w *Writer) WriteFrame(fr *Frame) {
+func (w *Encoder) WriteFrame(fr *Frame) {
 	w.stdin.Write(fr.Bytes)
-}
-
-func CreateWriter(Path string, FfmpegArgs []string) *Writer {
-	return &Writer{Path : Path, FfmpegArgs : FfmpegArgs}
 }

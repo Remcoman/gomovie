@@ -4,45 +4,29 @@ import (
 	"fmt"
 	"os/exec"
 	"io"
-	"image"
 )
 
-type Frame struct {
-	Bytes []byte
-	Width int
-	Height int
-	Index int
-}
-
-func (f *Frame) ToNRGBAImage() *image.NRGBA {
-	return &image.NRGBA{
-		Pix : f.Bytes,
-		Stride : f.Width * 4,
-		Rect : image.Rect(0, 0, f.Width, f.Height),
-	}
-}
-
-type Grabber struct {
+type VideoSource struct {
 	Path string
-	Info *Info
 	
+	info *Info
 	cmd *exec.Cmd
 	stdout io.ReadCloser
 	stderr io.ReadCloser
 	index int
 }
 
-func (g *Grabber) Close() {
+func (g *VideoSource) Close() {
 	if err := g.cmd.Process.Kill(); err != nil {
 		panic(err)
 	}
 }
 
-func (g *Grabber) Open() error {
+func (g *VideoSource) Open() error {
 	if info, err := ExtractInfo(g.Path); err != nil {
 		return err
 	} else {
-		g.Info = info
+		g.info = info
 	}
 	
 	g.cmd = exec.Command(
@@ -80,8 +64,12 @@ func (g *Grabber) Open() error {
 	return nil
 }
 
-func (g *Grabber) GetFrame() (*Frame, error) {
-	bytes := make([]byte, 4*g.Info.Width*g.Info.Height)
+func (g *VideoSource) Info() *Info {
+	return g.info
+}
+
+func (g *VideoSource) ReadFrame() (*Frame, error) {
+	bytes := make([]byte, 4*g.info.Width*g.info.Height)
 	
 	if _, err := io.ReadFull(g.stdout, bytes); err != nil {
 		return nil, err
@@ -91,12 +79,14 @@ func (g *Grabber) GetFrame() (*Frame, error) {
 	
 	return &Frame{
 		Bytes : bytes,
-		Width : g.Info.Width,
-		Height : g.Info.Height,
+		Width : g.info.Width,
+		Height : g.info.Height,
 		Index : g.index,
 	}, nil
 }
 
-func CreateGrabber(path string) Grabber {
-	return Grabber{Path : path, index : 0}
+func OpenVideo(path string) FrameReader {
+	source := &VideoSource{Path : path}
+	source.Open()
+	return source
 }

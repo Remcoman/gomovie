@@ -14,15 +14,13 @@ import (
 type Info struct {
 	Width     int
 	Height    int
-	Filename  string
 	Duration  float32
 	FrameRate float32
 	Rotation  int
 }
 
 func (i Info) String() string {
-	return fmt.Sprintf("Info about %s -> Width: %d, Height : %d, Duration : %f, Framerate : %f, Rotation: %d", 
-		i.Filename, 
+	return fmt.Sprintf("Width: %d, Height : %d, Duration : %f, Framerate : %f, Rotation: %d", 
 		i.Width, 
 		i.Height, 
 		i.Duration, 
@@ -144,7 +142,6 @@ func ExtractInfo(path string) (info *Info, err error) {
 		Height:    height,
 		FrameRate: videoStream.getFrameRate(),
 		Duration:  out.Format.getDuration(),
-		Filename:  out.Format.Filename,
 		Rotation:  rotation,
 	}
 
