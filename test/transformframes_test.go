@@ -50,6 +50,8 @@ func TestTransformFrames(t *testing.T) {
 		Path : "test2.mp4",
 	}
 	
+	defer out.Close()
+	
 	t.Log("Writing video to test2.mp4")
 	
 	_, err := io.Copy(out, tr)

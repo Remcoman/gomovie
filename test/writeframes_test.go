@@ -23,13 +23,12 @@ func TestWriteFrame(t *testing.T) {
 		Path : "test.mp4",
 	}
 	
+	defer out.Close()
+	
 	t.Log("Writing video to test.mp4")
 	
-	totalRead, err := io.Copy(out, vid)
+	_, err := io.Copy(out, vid)
 	if err != nil {
-		t.Log(err)
-		t.Fatal(totalRead)
+		t.Fatal(err)
 	}
-	
-	out.Close()
 }
