@@ -4,8 +4,7 @@ import (
 	"fmt"
 	"image"
 	"math"
-	"strings"
-
+	"strconv"
 	"io"
 )
 
@@ -14,17 +13,18 @@ func formatSize(width int, height int) string {
 }
 
 func formatTime(time float64) string {
-	hour := string(math.Floor(time / 3600.))
+	
+	hour := strconv.FormatFloat(math.Floor(time / 3600.), 'f', 0, 32)
 	if len(hour) < 2 {
 		hour = "0" + hour
 	}
 
-	min := string(math.Mod(math.Floor(time/60.), 60.))
+	min := strconv.FormatFloat(math.Mod(math.Floor(time/60.), 60.), 'f', 0, 32)
 	if len(min) < 2 {
 		min = "0" + min
 	}
 
-	seconds := string(math.Mod(time, 60))
+	seconds := strconv.FormatFloat(math.Mod(time, 60), 'f', 0, 32)
 	if len(seconds) < 2 {
 		seconds = "0" + seconds
 	}
@@ -32,19 +32,15 @@ func formatTime(time float64) string {
 	return hour + ":" + min + ":" + seconds
 }
 
-type EOV struct {
-	msg string
-}
-
-func (e EOV) Error() string {
-	return e.msg
-}
-
 type Frame struct {
 	Bytes  []byte
 	Width  int
 	Height int
 	Index  int
+}
+
+func (f *Frame) String() string {
+	return fmt.Sprintf("Index: %d, Width: %d, Height: %d", f.Index, f.Width, f.Height)
 }
 
 func (f *Frame) ToNRGBAImage() *image.NRGBA {
@@ -58,30 +54,19 @@ func (f *Frame) ToNRGBAImage() *image.NRGBA {
 type FrameReader interface {
 	ReadFrame() (*Frame, error)
 	Info() *Info
-
-	io.WriterTo
+	
+	io.Reader
 }
 
 type ConcatenatedVideo struct {
 	readers []FrameReader
 
 	index int
+	info *Info
 }
 
 func (f *ConcatenatedVideo) Info() *Info {
-	sumInfo := new(Info)
-
-	for reader := range f.readers {
-		info := reader.Info()
-		sumInfo.Duration += info.Duration
-		sumInfo.Width = math.Max(float64(info.Width), float64(sumInfo.Width))
-		sumInfo.Height = math.Max(float64(info.Height), float64(sumInfo.Height))
-	}
-
-	sumInfo.FrameRate = f.readers[0].Info().FrameRate
-	sumInfo.Rotation = 0
-
-	return sumInfo
+	return f.info
 }
 
 func (f *ConcatenatedVideo) ReadFrame() (fr *Frame, err error) {
@@ -91,35 +76,24 @@ func (f *ConcatenatedVideo) ReadFrame() (fr *Frame, err error) {
 		} else {
 			f.index = f.index + 1
 			if f.index >= len(f.readers) {
-				return nil, EOV{msg: "No more frames"}
+				return nil, io.EOF
 			}
 		}
 	}
 }
 
-func (f *ConcatenatedVideo) WriteTo(w io.Writer) (n int64, err error) {
-	var fr *Frame
+func Concat(readers ...FrameReader) *ConcatenatedVideo {
+	sumInfo := new(Info)
 
-	n = 0
-
-	for {
-		fr, err = f.ReadFrame()
-
-		if err != nil {
-			return
-		}
-
-		w, err = w.Write(fr.Bytes)
-		n += w
-
-		if err != nil {
-			return
-		}
+	for _, reader := range readers {
+		info := reader.Info()
+		sumInfo.Duration += info.Duration
+		sumInfo.Width = int(math.Max(float64(info.Width), float64(sumInfo.Width)))
+		sumInfo.Height = int(math.Max(float64(info.Height), float64(sumInfo.Height)))
 	}
 
-	return
-}
-
-func Concat(readers ...FrameReader) *ConcatenatedVideo {
-	return &ConcatenatedVideo{readers, 0}
+	sumInfo.FrameRate = readers[0].Info().FrameRate
+	sumInfo.Rotation = 0
+	
+	return &ConcatenatedVideo{readers, 0, sumInfo}
 }

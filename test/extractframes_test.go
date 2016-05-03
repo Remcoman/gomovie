@@ -13,7 +13,8 @@ func TestFrame2Png(t *testing.T) {
 		t.Fatal("GOMOVIE_VIDEO not set!")
 	}
 
-	video := gomovie.OpenVideo(path)
+	video := gomovie.VideoSource{Path : path}
+	video.Open()
 
 	frame, err := video.ReadFrame()
 

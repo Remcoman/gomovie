@@ -1,31 +1,35 @@
 package main
 
 import (
-	//"github.com/Remcoman/gomovie"
+	"github.com/Remcoman/gomovie"
 	
+	"os"
 	"testing"
+	"io"
 )
 
 func TestWriteFrame(t *testing.T) {
+	path := os.Getenv("GOMOVIE_VIDEO")
+	if path == "" {
+		t.Fatal("GOMOVIE_VIDEO not set!")
+	}
 	
-	//interface FrameReader
-	//ReadFrame frame, error
+	vid := &gomovie.VideoSource{
+		Path : path,
+	}
+	vid.Open()
 	
-	//vid1 := &VideoSource{Path : "vid.mp4"}
-	//vid1.Open()
+	out := &gomovie.VideoOutput{
+		Path : "test.mp4",
+	}
 	
-	//vid2 := &VideoSource{Path : "vid.mp4"}
-	//vid2.Open()
+	t.Log("Writing video to test.mp4")
 	
-	//transformer := FrameTransformer{src : vid1}
-	//transform.Add(func (frame *Frame) *Frame {
-	//	   return frame
-	//})
+	totalRead, err := io.Copy(out, vid)
+	if err != nil {
+		t.Log(err)
+		t.Fatal(totalRead)
+	}
 	
-	//both := Concat(transformer, vid2)
-	
-	//encoder := Encoder{Path : "yo", Fps : 24}
-	//encoder.Open()
-	
-	//io.Pipe(both, encoder)
+	out.Close()
 }

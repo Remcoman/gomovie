@@ -8,7 +8,8 @@ import (
 
 type VideoSource struct {
 	Path   string
-	Offset float64
+	Start float64
+	Duration float64
 
 	info   *Info
 	cmd    *exec.Cmd
@@ -17,10 +18,9 @@ type VideoSource struct {
 	index  int
 }
 
-func (g *VideoSource) Close() {
-	if err := g.cmd.Process.Kill(); err != nil {
-		panic(err)
-	}
+func (g *VideoSource) Close() (err error) {
+	err = g.cmd.Process.Kill()
+	return
 }
 
 func (g *VideoSource) Open() error {
@@ -30,14 +30,12 @@ func (g *VideoSource) Open() error {
 		g.info = info
 	}
 
-	strOffset := formatTime(g.Offset)
-
 	g.cmd = exec.Command(
 		FfmpegPath,
 
 		"-i", g.Path,
 		"-loglevel", "error",
-		"-ss", strOffset,
+		"-ss", formatTime(g.Start),
 		"-f", "image2pipe",
 		"-pix_fmt", "rgba",
 		"-vcodec", "rawvideo",
@@ -61,21 +59,37 @@ func (g *VideoSource) Open() error {
 	}
 
 	go func() {
-		err := g.cmd.Wait()
-		fmt.Println(err)
+		if err := g.cmd.Wait(); err != nil {
+			fmt.Println(err)
+		}
 	}()
 
 	return nil
+}
+
+func (g *VideoSource) Read(p []byte) (int, error) {
+	return g.stdout.Read(p)
 }
 
 func (g *VideoSource) Info() *Info {
 	return g.info
 }
 
+func (g *VideoSource) Time() float64 {
+	return float64(g.index) * float64(1./g.info.FrameRate)
+}
+
 func (g *VideoSource) ReadFrame() (*Frame, error) {
 	bytes := make([]byte, 4*g.info.Width*g.info.Height)
+	
+	if g.Duration != 0 && g.Time() > g.Duration {
+		return nil, io.EOF
+	}
 
-	if _, err := io.ReadFull(g.stdout, bytes); err != nil {
+	if n, err := io.ReadFull(g.stdout, bytes); err != nil {
+		if n == 0 { //got invalid file descriptor (ffmpeg autocloses stdout?)
+			err = io.EOF
+		}
 		return nil, err
 	}
 
@@ -87,10 +101,4 @@ func (g *VideoSource) ReadFrame() (*Frame, error) {
 		Height: g.info.Height,
 		Index:  g.index,
 	}, nil
-}
-
-func OpenVideo(path string, offset float64) FrameReader {
-	source := &VideoSource{Path: path, Offset: offset}
-	source.Open()
-	return source
 }

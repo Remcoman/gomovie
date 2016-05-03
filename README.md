@@ -6,5 +6,4 @@ The goal is provide a simple moviepy like api for video editing.
 - grab frames from ffmpeg
 
 # todo
-- seek to a time in the movie
-- write frames back into an ffmpeg stream
+- use go routines to process multiple frames at the same time?
