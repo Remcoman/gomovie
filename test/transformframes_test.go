@@ -23,7 +23,7 @@ func TestTransformFrames(t *testing.T) {
 	
 	tr := &gomovie.FrameTransformer{Src : vid}
 	
-	tr.AddTransform(func (bytes *[]byte, info *gomovie.Info) {
+	tr.AddTransform(func (bytes *[]byte, info *gomovie.VideoInfo) {
 		img := image.NRGBA{Pix : *bytes, Stride : 4 * info.Width, Rect : image.Rect(0,0,info.Width, info.Height)}
 		
 		part := img.SubImage(image.Rect(0,0,200,200)).(*image.NRGBA)
@@ -47,12 +47,12 @@ func TestTransformFrames(t *testing.T) {
 	})
 	
 	out := &gomovie.VideoOutput{
-		Path : "test2.mp4",
+		Path : "../videos/test2.mp4",
 	}
 	
 	defer out.Close()
 	
-	t.Log("Writing video to test2.mp4")
+	t.Log("Writing video to ../videos/test2.mp4")
 	
 	_, err := io.Copy(out, tr)
 	if err != nil {

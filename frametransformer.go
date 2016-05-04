@@ -1,6 +1,6 @@
 package gomovie
 
-type TransformerFunc func(*[]byte, *Info)
+type TransformerFunc func(*[]byte, *VideoInfo)
 
 type FrameTransformer struct {
 	Src FrameReader
@@ -16,12 +16,12 @@ func (tr *FrameTransformer) applyTransform(fr *Frame) {
 	bytes := &fr.Bytes
 	
 	for _, transform := range tr.transforms {
-		transform(bytes, tr.Info())
+		transform(bytes, tr.VideoInfo())
 	}
 }
 
-func (tr *FrameTransformer) Info() *Info {
-	return tr.Src.Info()
+func (tr *FrameTransformer) VideoInfo() *VideoInfo {
+	return tr.Src.VideoInfo()
 }
 
 func (tr *FrameTransformer) Read(p []byte) (int, error) {

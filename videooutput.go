@@ -14,7 +14,7 @@ var errInvalidReader = errors.New("Invalid reader")
 type VideoOutput struct {
 	Path       string
 	FfmpegArgs []string
-	Info Info
+	VideoInfo *VideoInfo
 	
 	opened bool
 	cmd   *exec.Cmd
@@ -34,7 +34,8 @@ func (w *VideoOutput) ReadFrom(r io.Reader) (read int64, err error) {
 	}
 	
 	if !w.opened {
-		w.Info = *frameReader.Info()
+		w.VideoInfo = frameReader.VideoInfo()
+		
 		if err = w.Open(); err != nil {
 			return
 		}
@@ -68,15 +69,19 @@ func (w *VideoOutput) Open() (err error) {
 		return errors.New("Already opened")
 	}
 	
-	args := []string{
-		"-y",
-		"-s", formatSize(w.Info.Width, w.Info.Height),
-		"-pix_fmt", "rgba",
-		"-f", "rawvideo",
-		"-r", strconv.FormatFloat(float64(w.Info.FrameRate), 'g', 8, 32),
-		"-i", "-",
-		"-an",
-		w.Path,
+	var args []string
+	
+	if w.VideoInfo != nil {
+		args = append(args,
+			"-y",
+			"-s", formatSize(w.VideoInfo.Width, w.VideoInfo.Height),
+			"-pix_fmt", "rgba",
+			"-f", "rawvideo",
+			"-r", strconv.FormatFloat(float64(w.VideoInfo.FrameRate), 'g', 8, 32),
+			"-i", "-",
+			"-an",
+			w.Path,
+		)
 	}
 	
 	args = append(args, w.FfmpegArgs...)

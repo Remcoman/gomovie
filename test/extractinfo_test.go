@@ -13,10 +13,18 @@ func TestInfo(t *testing.T) {
 		t.Fatal("GOMOVIE_VIDEO not set!")
 	}
 	
-	if info, err := gomovie.ExtractInfo(video); err != nil {
+	if videoInfo, audioInfo, err := gomovie.ExtractInfo(video); err != nil {
 		t.Fatal(err)
 	} else {
-		t.Log(info.String())
+		
+		if videoInfo != nil {
+			t.Log(videoInfo.String())
+		}
+		
+		if audioInfo != nil {
+			t.Log(audioInfo.String())	
+		}
+		
 	}
 	
 } 

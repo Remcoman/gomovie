@@ -20,12 +20,12 @@ func TestWriteFrame(t *testing.T) {
 	vid.Open()
 	
 	out := &gomovie.VideoOutput{
-		Path : "test.mp4",
+		Path : "../videos/test.mp4",
 	}
 	
 	defer out.Close()
 	
-	t.Log("Writing video to test.mp4")
+	t.Log("Writing video to ../videos/test.mp4")
 	
 	_, err := io.Copy(out, vid)
 	if err != nil {

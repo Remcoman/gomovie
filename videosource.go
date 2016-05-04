@@ -11,7 +11,8 @@ type VideoSource struct {
 	Start float64
 	Duration float64
 
-	info   *Info
+	Audio  *AudioSource
+	Info   *VideoInfo
 	cmd    *exec.Cmd
 	stdout io.ReadCloser
 	stderr io.ReadCloser
@@ -23,11 +24,20 @@ func (g *VideoSource) Close() (err error) {
 	return
 }
 
-func (g *VideoSource) Open() error {
-	if info, err := ExtractInfo(g.Path); err != nil {
-		return err
-	} else {
-		g.info = info
+func (g *VideoSource) Open() (err error) {
+	var videoInfo *VideoInfo
+	var audioInfo *AudioInfo
+	var stderr io.ReadCloser
+	var stdout io.ReadCloser
+	
+	if videoInfo, audioInfo, err = ExtractInfo(g.Path); err != nil {
+		return
+	}
+	
+	g.Info = videoInfo
+	
+	if audioInfo != nil {
+		g.Audio = &AudioSource{Path : g.Path, Info : audioInfo}
 	}
 
 	g.cmd = exec.Command(
@@ -42,17 +52,17 @@ func (g *VideoSource) Open() error {
 		"-",
 	)
 
-	if stderr, err := g.cmd.StderrPipe(); err != nil {
-		return err
-	} else {
-		g.stderr = stderr
-	}
+	if stderr, err = g.cmd.StderrPipe(); err != nil {
+		return
+	} 
+	
+	g.stderr = stderr
 
-	if stdout, err := g.cmd.StdoutPipe(); err != nil {
-		return err
-	} else {
-		g.stdout = stdout
+	if stdout, err = g.cmd.StdoutPipe(); err != nil {
+		return
 	}
+	
+	g.stdout = stdout
 
 	if err := g.cmd.Start(); err != nil {
 		return err
@@ -71,18 +81,22 @@ func (g *VideoSource) Read(p []byte) (int, error) {
 	return g.stdout.Read(p)
 }
 
-func (g *VideoSource) Info() *Info {
-	return g.info
+func (g *VideoSource) VideoInfo() *VideoInfo {
+	return g.Info
 }
 
-func (g *VideoSource) Time() float64 {
-	return float64(g.index) * float64(1./g.info.FrameRate)
+func (g *VideoSource) AudioInfo() *AudioInfo {
+	if g.Audio != nil {
+		return g.Audio.AudioInfo()
+	}
+	return nil
 }
 
 func (g *VideoSource) ReadFrame() (*Frame, error) {
-	bytes := make([]byte, 4*g.info.Width*g.info.Height)
+	bytes := make([]byte, 4*g.Info.Width*g.Info.Height)
+	time := float64(g.index) * float64(1./g.Info.FrameRate)
 	
-	if g.Duration != 0 && g.Time() > g.Duration {
+	if g.Duration != 0 && time > g.Duration {
 		return nil, io.EOF
 	}
 
@@ -97,8 +111,8 @@ func (g *VideoSource) ReadFrame() (*Frame, error) {
 
 	return &Frame{
 		Bytes:  bytes,
-		Width:  g.info.Width,
-		Height: g.info.Height,
+		Width:  g.Info.Width,
+		Height: g.Info.Height,
 		Index:  g.index,
 	}, nil
 }
