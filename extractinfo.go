@@ -139,8 +139,6 @@ func ExtractInfo(path string) (videoInfo *VideoInfo, audioInfo *AudioInfo, err e
 
 	bytes, err := cmd.Output()
 	
-	fmt.Println(string(bytes))
-
 	if err != nil {
 		return
 	}

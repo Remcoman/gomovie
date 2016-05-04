@@ -5,6 +5,12 @@ import (
 	"io"
 	"errors"
 	"fmt"
+	"encoding/binary"
+	"bytes"
+)
+
+const (
+	PCM_SAMPLE_BITS = 16
 )
 
 type AudioSource struct {
@@ -48,7 +54,7 @@ func (g *AudioSource) Open() (err error) {
 		"-i", g.Path,
 		"-loglevel", "error",
 		"-ss", formatTime(g.Start),
-		"-acodec", "pcm_s16le",
+		"-acodec", "pcm_s" + string(PCM_SAMPLE_BITS) + "le",
 		"-ar", "44100",
 		"-ac", "2",
 		"-",
@@ -77,6 +83,16 @@ func (g *AudioSource) Open() (err error) {
 	}()
 
 	return nil
+}
+
+func (g *AudioSource) ReadPCM() (pcm []int16, err error) {
+	o := make([]byte, 512)
+	if _, err = io.ReadFull(g.stdout, o); err != nil {
+		return
+	}
+ 	byteReader := bytes.NewReader(o)
+ 	binary.Read(byteReader, binary.LittleEndian, pcm)
+	return
 }
 
 func (g *AudioSource) Read(p []byte) (int, error) {
