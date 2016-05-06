@@ -5,7 +5,6 @@ import (
 	
 	"os"
 	"testing"
-	"io"
 )
 
 func TestWriteFrame(t *testing.T) {
@@ -19,16 +18,16 @@ func TestWriteFrame(t *testing.T) {
 	}
 	vid.Open()
 	
-	out := &gomovie.VideoOutput{
-		Path : "../videos/test.mp4",
-	}
-	
-	defer out.Close()
-	
 	t.Log("Writing video to ../videos/test.mp4")
 	
-	_, err := io.Copy(out, vid)
-	if err != nil {
+	config := gomovie.Config{
+		Codec : "libx264",
+		ProgressCallback : func(progress float32) {
+			t.Log(progress)
+		},
+	}
+	
+	if err := gomovie.Encode("../videos/test.mp4", vid, config); err != nil {
 		t.Fatal(err)
 	}
 }

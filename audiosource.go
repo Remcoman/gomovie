@@ -10,7 +10,8 @@ import (
 )
 
 const (
-	PCM_SAMPLE_BITS = 16
+	PCMSampleSize = 16
+	BufferSize = 512
 )
 
 type AudioSource struct {
@@ -24,21 +25,21 @@ type AudioSource struct {
 	stderr io.ReadCloser
 }
 
-func (a *AudioSource) AudioInfo() *AudioInfo {
-	return a.Info
+func (src *AudioSource) AudioInfo() *AudioInfo {
+	return src.Info
 }
 
-func (g *AudioSource) Close() (err error) {
-	err = g.cmd.Process.Kill()
+func (src *AudioSource) Close() (err error) {
+	err = src.cmd.Process.Kill()
 	return
 }
 
-func (g *AudioSource) Open() (err error) {
+func (src *AudioSource) Open() (err error) {
 	var audioInfo *AudioInfo
 	var stderr io.ReadCloser
 	var stdout io.ReadCloser
 	
-	if _, audioInfo, err = ExtractInfo(g.Path); err != nil {
+	if _, audioInfo, err = ExtractInfo(src.Path); err != nil {
 		return
 	}
 	
@@ -46,38 +47,38 @@ func (g *AudioSource) Open() (err error) {
 		return errors.New("No audio found in file")
 	}
 	
-	g.Info = audioInfo
+	src.Info = audioInfo
 
-	g.cmd = exec.Command(
+	src.cmd = exec.Command(
 		FfmpegPath,
 
-		"-i", g.Path,
+		"-i", src.Path,
 		"-loglevel", "error",
-		"-ss", formatTime(g.Start),
-		"-acodec", "pcm_s" + string(PCM_SAMPLE_BITS) + "le",
+		"-ss", FormatTime(src.Start),
+		"-acodec", "pcm_s" + string(PCMSampleSize) + "le",
 		"-ar", "44100",
 		"-ac", "2",
 		"-",
 	)
 
-	if stderr, err = g.cmd.StderrPipe(); err != nil {
+	if stderr, err = src.cmd.StderrPipe(); err != nil {
 		return
 	} 
 	
-	g.stderr = stderr
+	src.stderr = stderr
 
-	if stdout, err = g.cmd.StdoutPipe(); err != nil {
+	if stdout, err = src.cmd.StdoutPipe(); err != nil {
 		return
 	}
 	
-	g.stdout = stdout
+	src.stdout = stdout
 
-	if err := g.cmd.Start(); err != nil {
+	if err := src.cmd.Start(); err != nil {
 		return err
 	}
 
 	go func() {
-		if err := g.cmd.Wait(); err != nil {
+		if err := src.cmd.Wait(); err != nil {
 			fmt.Println(err)
 		}
 	}()
@@ -85,16 +86,19 @@ func (g *AudioSource) Open() (err error) {
 	return nil
 }
 
-func (g *AudioSource) ReadPCM() (pcm []int16, err error) {
-	o := make([]byte, 512)
-	if _, err = io.ReadFull(g.stdout, o); err != nil {
+func (src *AudioSource) ReadPCM() (pcm []PCM16Sample, err error) {
+	o := make([]byte, BufferSize)
+	if _, err = io.ReadFull(src.stdout, o); err != nil {
 		return
 	}
  	byteReader := bytes.NewReader(o)
+	 
+	pcm = make([]PCM16Sample, PCMSampleSize) 
  	binary.Read(byteReader, binary.LittleEndian, pcm)
+	 
 	return
 }
 
-func (g *AudioSource) Read(p []byte) (int, error) {
-	return g.stdout.Read(p)
+func (src *AudioSource) Read(p []byte) (int, error) {
+	return src.stdout.Read(p)
 }

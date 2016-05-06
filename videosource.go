@@ -30,7 +30,7 @@ func (g *VideoSource) Open() (err error) {
 	var stderr io.ReadCloser
 	var stdout io.ReadCloser
 	
-	if videoInfo, audioInfo, err = ExtractInfo(g.Path); err != nil {
+	if videoInfo, _, err = ExtractInfo(g.Path); err != nil {
 		return
 	}
 	
@@ -45,7 +45,7 @@ func (g *VideoSource) Open() (err error) {
 
 		"-i", g.Path,
 		"-loglevel", "error",
-		"-ss", formatTime(g.Start),
+		"-ss", FormatTime(g.Start),
 		"-f", "image2pipe",
 		"-pix_fmt", "rgba",
 		"-vcodec", "rawvideo",
