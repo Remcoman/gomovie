@@ -1,25 +1,25 @@
 package gomovie
 
 import (
-	"os/exec"
-	"io"
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
-	"encoding/binary"
-	"bytes"
+	"io"
+	"os/exec"
 )
 
 const (
 	PCMSampleSize = 16
-	BufferSize = 512
+	BufferSize    = 512
 )
 
 type AudioSource struct {
-	Path   string
-	Start float64
+	Path     string
+	Start    float64
 	Duration float64
-	
-	Info *AudioInfo
+
+	Info   *AudioInfo
 	cmd    *exec.Cmd
 	stdout io.ReadCloser
 	stderr io.ReadCloser
@@ -38,15 +38,15 @@ func (src *AudioSource) Open() (err error) {
 	var audioInfo *AudioInfo
 	var stderr io.ReadCloser
 	var stdout io.ReadCloser
-	
+
 	if _, audioInfo, err = ExtractInfo(src.Path); err != nil {
 		return
 	}
-	
+
 	if audioInfo == nil {
 		return errors.New("No audio found in file")
 	}
-	
+
 	src.Info = audioInfo
 
 	src.cmd = exec.Command(
@@ -55,7 +55,7 @@ func (src *AudioSource) Open() (err error) {
 		"-i", src.Path,
 		"-loglevel", "error",
 		"-ss", FormatTime(src.Start),
-		"-acodec", "pcm_s" + string(PCMSampleSize) + "le",
+		"-acodec", "pcm_s"+string(PCMSampleSize)+"le",
 		"-ar", "44100",
 		"-ac", "2",
 		"-",
@@ -63,14 +63,14 @@ func (src *AudioSource) Open() (err error) {
 
 	if stderr, err = src.cmd.StderrPipe(); err != nil {
 		return
-	} 
-	
+	}
+
 	src.stderr = stderr
 
 	if stdout, err = src.cmd.StdoutPipe(); err != nil {
 		return
 	}
-	
+
 	src.stdout = stdout
 
 	if err := src.cmd.Start(); err != nil {
@@ -86,16 +86,16 @@ func (src *AudioSource) Open() (err error) {
 	return nil
 }
 
-func (src *AudioSource) ReadPCM() (pcm []PCM16Sample, err error) {
+func (src *AudioSource) ReadSample() (sample []Sample16, err error) {
 	o := make([]byte, BufferSize)
 	if _, err = io.ReadFull(src.stdout, o); err != nil {
 		return
 	}
- 	byteReader := bytes.NewReader(o)
-	 
-	pcm = make([]PCM16Sample, PCMSampleSize) 
- 	binary.Read(byteReader, binary.LittleEndian, pcm)
-	 
+	byteReader := bytes.NewReader(o)
+
+	pcm = make([]Sample16, PCMSampleSize)
+	binary.Read(byteReader, binary.LittleEndian, pcm)
+
 	return
 }
 
