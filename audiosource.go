@@ -86,15 +86,15 @@ func (src *AudioSource) Open() (err error) {
 	return nil
 }
 
-func (src *AudioSource) ReadSample() (sample []Sample16, err error) {
+func (src *AudioSource) ReadSample() (sample []SampleInt16, err error) {
 	o := make([]byte, BufferSize)
 	if _, err = io.ReadFull(src.stdout, o); err != nil {
 		return
 	}
 	byteReader := bytes.NewReader(o)
 
-	pcm = make([]Sample16, PCMSampleSize)
-	binary.Read(byteReader, binary.LittleEndian, pcm)
+	sample = make([]SampleInt16, PCMSampleSize)
+	binary.Read(byteReader, binary.LittleEndian, sample)
 
 	return
 }

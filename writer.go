@@ -15,8 +15,9 @@ type Config struct {
 
 func Encode(path string, src interface{}, config Config) (err error) {
 	var videoSrc FrameReader
-	var audioSrc SampleReader
+	//var audioSrc SampleReader
 	var totalFrames float32
+	var ok bool
 
 	args := []string{
 		"-y",
@@ -24,9 +25,9 @@ func Encode(path string, src interface{}, config Config) (err error) {
 		"-v", "panic",
 	}
 
-	if videoSrc, ok := src.(FrameReader); ok {
+	if videoSrc, ok = src.(FrameReader); ok {
 		videoInfo := videoSrc.VideoInfo()
-		totalFrames := videoInfo.Duration * videoInfo.FrameRate
+		totalFrames = videoInfo.Duration * videoInfo.FrameRate
 
 		args = append(args, 
 			"-s", FormatSize(videoInfo.Width, videoInfo.Height),
@@ -40,9 +41,9 @@ func Encode(path string, src interface{}, config Config) (err error) {
 			"-vcodec", config.Codec,
 		)
 	}
-
+	
 	//todo also write from audio if presetn
-	if audioSrc, ok := src.(SampleReader); ok {
+	if _, ok = src.(SampleReader); ok {
 		
 		//both audio and video so lets write audio to temp file
 		if videoSrc != nil {
@@ -55,14 +56,14 @@ func Encode(path string, src interface{}, config Config) (err error) {
 			//args = append(args,
 			//	"-i", "temp.wav",
 			//)
-		}
-		else {
+		} else {
 			//audio only
-			args = append(args, 
-				"-i", "pipe:0",
-				"-f", "pcm_s16le"
-				"-acodec", config.Codec,
-			)
+			// fmt.Println("yo")
+			// args = append(args, 
+			// 	"-i", "pipe:0",
+			// 	"-f", "pcm_s16le",
+			// 	"-acodec", config.Codec,
+			// )
 		}
 	}
 
@@ -70,6 +71,7 @@ func Encode(path string, src interface{}, config Config) (err error) {
 	args = append(args, path)
 
 	cmd := exec.Command(FfmpegPath, args...)
+	
 	cmd.Stdin = videoSrc
 
 	buf := new(bytes.Buffer)

@@ -4,14 +4,14 @@ import (
 	"io"
 )
 
-type Sample16 int16
+type SampleInt16 int16
 
-func (p Sample16) ToFloat() float32 {
+func (p SampleInt16) ToFloat() float32 {
 	return float32(p) / float32(32768.)
 }
 
 type SampleReader interface {
-	ReadSample() (*[]Sample16, error)
+	ReadSample() (*[]SampleInt16, error)
 	AudioInfo() *AudioInfo
 	io.Reader
 }
