@@ -4,10 +4,67 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"image"
+	"io"
 )
 
 var FfmpegPath string = "/usr/bin/ffmpeg"
 var FfprobePath string = "/usr/bin/ffprobe"
+
+type SampleInt16 int16
+
+func (p SampleInt16) ToFloat() float32 {
+	return float32(p) / float32(32768.)
+}
+
+type AudioReader interface {
+	ReadSample() ([]SampleInt16, error)
+	Info() *AudioInfo
+	io.Reader
+}
+
+type Frame struct {
+	Bytes  []byte
+	Width  int
+	Height int
+	Index  int
+}
+
+func (f *Frame) String() string {
+	return fmt.Sprintf("Index: %d, Width: %d, Height: %d", f.Index, f.Width, f.Height)
+}
+
+func (f *Frame) ToNRGBAImage() *image.NRGBA {
+	return &image.NRGBA{
+		Pix:    f.Bytes,
+		Stride: f.Width * 4,
+		Rect:   image.Rect(0, 0, f.Width, f.Height),
+	}
+}
+
+type VideoReader interface {
+	ReadFrame() (*Frame, error)
+	Info() *VideoInfo
+	
+	io.Reader
+}
+
+type VideoAudio struct {
+	V VideoReader
+	A AudioReader
+}
+
+func (v *VideoAudio) Info() (videoInfo *VideoInfo, audioInfo *AudioInfo) {
+	if v.V != nil {
+		videoInfo = v.V.Info()
+	}
+	
+	if v.A != nil {
+		audioInfo = v.A.Info()
+	}
+	
+	return
+}
 
 func FormatSize(width int, height int) string {
 	return fmt.Sprintf("%dx%d", width, height)

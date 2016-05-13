@@ -5,29 +5,64 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
+	"fmt"
+	"errors"
 )
 
 type Config struct {
 	Codec            string
 	ExtraArgs        []string
 	ProgressCallback func(progress float32)
+	DebugFFmpegOutput bool
+}
+
+func OpenVideo(path string) *VideoAudio {
+	videoInfo, audioInfo, _ := ExtractInfo(path)
+	
+	v := &FfmpegRGBAStream{Path : path, I : videoInfo}
+	v.Open()
+	
+	a := &FfmpegPCMStream{Path : path, I : audioInfo}
+	a.Open()
+	
+	return &VideoAudio{v, a}
 }
 
 func Encode(path string, src interface{}, config Config) (err error) {
-	var videoSrc FrameReader
-	//var audioSrc SampleReader
+	var videoSrc VideoReader
+	var audioSrc AudioReader
 	var totalFrames float32
-	var ok bool
 
-	args := []string{
-		"-y",
-		"-progress", "pipe:2",
-		"-v", "panic",
+	args := []string{"-y"}
+	
+	if !config.DebugFFmpegOutput {
+		args = append(args,
+			"-progress", "pipe:2",
+			"-v", "panic",
+		)
+	}
+	
+	switch t := src.(type) {
+		case VideoReader :
+			videoSrc = t
+			
+		case AudioReader :
+			audioSrc = t
+			
+		case VideoAudio :
+			videoSrc = t.V
+			audioSrc = t.A
+			
+		default :
+			return errors.New("Invalid type!")
 	}
 
-	if videoSrc, ok = src.(FrameReader); ok {
-		videoInfo := videoSrc.VideoInfo()
+	if videoSrc != nil {
+		videoInfo := videoSrc.Info()
 		totalFrames = videoInfo.Duration * videoInfo.FrameRate
+		
+		fmt.Println("yo")
 
 		args = append(args, 
 			"-s", FormatSize(videoInfo.Width, videoInfo.Height),
@@ -43,27 +78,32 @@ func Encode(path string, src interface{}, config Config) (err error) {
 	}
 	
 	//todo also write from audio if presetn
-	if _, ok = src.(SampleReader); ok {
+	if audioSrc != nil {
 		
 		//both audio and video so lets write audio to temp file
 		if videoSrc != nil {
 			//mkfifo /tmp/audio
 			//output to pipe /tmp/audio
 			//set input to /tmp/audio
+			
+			fmt.Println(audioSrc.Info())
 
-			//go Encode("temp.wav", audioSrc, Config{})
+			syscall.Mknod("audio", syscall.S_IFIFO|0666, 0)
 
-			//args = append(args,
-			//	"-i", "temp.wav",
-			//)
+			go Encode("audio", audioSrc, Config{})
+
+			args = append(args,
+				"-f", "pcm_s16le",
+				"-ac", "2",
+				"-ar", "44100",
+				"-i", "audio",
+			)
 		} else {
-			//audio only
-			// fmt.Println("yo")
-			// args = append(args, 
-			// 	"-i", "pipe:0",
-			// 	"-f", "pcm_s16le",
-			// 	"-acodec", config.Codec,
-			// )
+			args = append(args, 
+				"-i", "pipe:0",
+				"-f", "pcm_s16le",
+				"-acodec", config.Codec,
+			)
 		}
 	}
 

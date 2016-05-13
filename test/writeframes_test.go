@@ -13,15 +13,13 @@ func TestWriteFrame(t *testing.T) {
 		t.Fatal("GOMOVIE_VIDEO not set!")
 	}
 	
-	vid := &gomovie.VideoSource{
-		Path : path,
-	}
-	vid.Open()
+	vid := gomovie.OpenVideo(path)
 	
 	t.Log("Writing video to ../videos/test.mp4")
 	
 	config := gomovie.Config{
 		Codec : "libx264",
+		DebugFFmpegOutput : true,
 		ProgressCallback : func(progress float32) {
 			t.Log(progress)
 		},
