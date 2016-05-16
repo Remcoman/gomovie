@@ -17,18 +17,6 @@ type Config struct {
 	DebugFFmpegOutput bool
 }
 
-func OpenVideo(path string) *VideoAudio {
-	videoInfo, audioInfo, _ := ExtractInfo(path)
-	
-	v := &FfmpegRGBAStream{Path : path, I : videoInfo}
-	v.Open()
-	
-	a := &FfmpegPCMStream{Path : path, I : audioInfo}
-	a.Open()
-	
-	return &VideoAudio{v, a}
-}
-
 func Encode(path string, src interface{}, config Config) (err error) {
 	var videoSrc VideoReader
 	var audioSrc AudioReader
@@ -62,8 +50,6 @@ func Encode(path string, src interface{}, config Config) (err error) {
 		videoInfo := videoSrc.Info()
 		totalFrames = videoInfo.Duration * videoInfo.FrameRate
 		
-		fmt.Println("yo")
-
 		args = append(args, 
 			"-s", FormatSize(videoInfo.Width, videoInfo.Height),
 			"-r", strconv.FormatFloat(float64(videoInfo.FrameRate), 'g', 8, 32),

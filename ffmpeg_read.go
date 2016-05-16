@@ -9,6 +9,18 @@ import (
 	"encoding/binary"
 )
 
+func OpenVideo(path string) *VideoAudio {
+	videoInfo, audioInfo, _ := ExtractInfo(path)
+	
+	v := &FfmpegRGBAStream{Path : path, I : videoInfo}
+	v.Open()
+	
+	a := &FfmpegPCMStream{Path : path, I : audioInfo}
+	a.Open()
+	
+	return &VideoAudio{v, a}
+}
+
 const (
 	PCMSampleSize = 16
 	BufferSize    = 512
