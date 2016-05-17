@@ -9,6 +9,18 @@ import (
 	"encoding/binary"
 )
 
+func OpenVideo(path string) *Video {
+	videoInfo, audioInfo, _ := ExtractInfo(path)
+	
+	v := &FfmpegRGBAStream{Path : path, I : videoInfo}
+	v.Open()
+	
+	a := &FfmpegPCMStream{Path : path, I : audioInfo}
+	a.Open()
+	
+	return &Video{v, a}
+}
+
 const (
 	PCMSampleSize = 16
 	BufferSize    = 512
@@ -37,17 +49,39 @@ func (src *FfmpegPCMStream) Close() (err error) {
 func (src *FfmpegPCMStream) Open() (err error) {
 	var stderr io.ReadCloser
 	var stdout io.ReadCloser
-
-	src.cmd = exec.Command(
-		FfmpegPath,
-
-		"-i", src.Path,
+	
+	args := []string {
 		"-loglevel", "error",
-		"-ss", FormatTime(src.Start),
-		"-acodec", "pcm_s"+string(PCMSampleSize)+"le",
+		
+		"-i", src.Path,
+		
+		"-vn",
+	}
+	
+	if src.Start > 0 {
+		args = append(args, 
+			"-ss", 
+			strconv.FormatFloat(src.Start, 'f', -1, 32),
+		)
+	}
+	
+	if src.Duration > 0 {
+		args = append(args,
+			"-t",
+			strconv.FormatFloat(src.Duration, 'f', -1, 32),
+		)
+	}
+	
+	args = append(args,
+		"-f", "s16le",
 		"-ar", "44100",
 		"-ac", "2",
 		"-",
+	)
+	
+	src.cmd = exec.Command(
+		FfmpegPath,
+		args...,	
 	)
 
 	if stderr, err = src.cmd.StderrPipe(); err != nil {
@@ -115,8 +149,10 @@ func (g *FfmpegRGBAStream) Open() (err error) {
 	var stdout io.ReadCloser
 	
 	args := []string{
-		"-i", g.Path,
 		"-loglevel", "error",
+		
+		"-i", g.Path,
+		
 		"-f", "image2pipe",
 		"-pix_fmt", "rgba",
 		"-vcodec", "rawvideo",

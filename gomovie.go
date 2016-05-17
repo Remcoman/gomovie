@@ -49,18 +49,18 @@ type VideoReader interface {
 	io.Reader
 }
 
-type VideoAudio struct {
-	V VideoReader
-	A AudioReader
+type Video struct {
+	VideoReader
+	AudioReader
 }
 
-func (v *VideoAudio) Info() (videoInfo *VideoInfo, audioInfo *AudioInfo) {
-	if v.V != nil {
-		videoInfo = v.V.Info()
+func (v *Video) Info() (videoInfo *VideoInfo, audioInfo *AudioInfo) {
+	if v.VideoReader != nil {
+		videoInfo = v.VideoReader.Info()
 	}
 	
-	if v.A != nil {
-		audioInfo = v.A.Info()
+	if v.AudioReader != nil {
+		audioInfo = v.AudioReader.Info()
 	}
 	
 	return
