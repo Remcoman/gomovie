@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"fmt"
 	"errors"
+	"os"
 )
 
 type Config struct {
@@ -17,7 +18,7 @@ type Config struct {
 	DebugFFmpegOutput bool
 }
 
-func OpenVideo(path string) *VideoAudio {
+func OpenVideo(path string) VideoAudio {
 	videoInfo, audioInfo, _ := ExtractInfo(path)
 	
 	v := &FfmpegRGBAStream{Path : path, I : videoInfo}
@@ -26,13 +27,14 @@ func OpenVideo(path string) *VideoAudio {
 	a := &FfmpegPCMStream{Path : path, I : audioInfo}
 	a.Open()
 	
-	return &VideoAudio{v, a}
+	return VideoAudio{v, a}
 }
 
 func Encode(path string, src interface{}, config Config) (err error) {
 	var videoSrc VideoReader
 	var audioSrc AudioReader
 	var totalFrames float32
+	var progressBuffer *bytes.Buffer
 
 	args := []string{"-y"}
 	
@@ -62,8 +64,6 @@ func Encode(path string, src interface{}, config Config) (err error) {
 		videoInfo := videoSrc.Info()
 		totalFrames = videoInfo.Duration * videoInfo.FrameRate
 		
-		fmt.Println("yo")
-
 		args = append(args, 
 			"-s", FormatSize(videoInfo.Width, videoInfo.Height),
 			"-r", strconv.FormatFloat(float64(videoInfo.FrameRate), 'g', 8, 32),
@@ -93,43 +93,38 @@ func Encode(path string, src interface{}, config Config) (err error) {
 			go Encode("audio", audioSrc, Config{})
 
 			args = append(args,
-				"-f", "pcm_s16le",
-				"-ac", "2",
-				"-ar", "44100",
+				"-f", "u16le",
 				"-i", "audio",
 			)
 		} else {
-			args = append(args, 
+			args = append(args,
+				"-f", "pcm_s16le", 
 				"-i", "pipe:0",
-				"-f", "pcm_s16le",
-				"-acodec", config.Codec,
+				"-acodec", "wav",
 			)
 		}
 	}
 
 	args = append(args, config.ExtraArgs...)
 	args = append(args, path)
+	
+	fmt.Println(args)
 
 	cmd := exec.Command(FfmpegPath, args...)
 	
 	cmd.Stdin = videoSrc
 
-	buf := new(bytes.Buffer)
-
-	cmd.Stderr = buf
-
-	if err = cmd.Start(); err != nil {
-		return
-	}
-
-	if config.ProgressCallback != nil {
+	if !config.DebugFFmpegOutput && config.ProgressCallback != nil {
+		progressBuffer = new(bytes.Buffer)
+		cmd.Stderr = progressBuffer
+		
 		quit := make(chan bool)
 
 		defer func() {
 			quit <- true
 		}()
 
-		go func(buf *bytes.Buffer) {
+		go func() {
 
 			for {
 				select {
@@ -137,7 +132,7 @@ func Encode(path string, src interface{}, config Config) (err error) {
 					return
 
 				default:
-					line, err := buf.ReadString('\n')
+					line, err := progressBuffer.ReadString('\n')
 					if err == nil {
 						parts := strings.Split(line, "=")
 						if len(parts) > 1 && parts[0] == "frame" && len(parts[1]) > 0 {
@@ -148,7 +143,13 @@ func Encode(path string, src interface{}, config Config) (err error) {
 				}
 			}
 
-		}(buf)
+		}()
+	} else if config.DebugFFmpegOutput {
+		cmd.Stderr = os.Stdout
+	}
+
+	if err = cmd.Start(); err != nil {
+		return
 	}
 
 	return cmd.Wait()
