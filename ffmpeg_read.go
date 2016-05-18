@@ -9,27 +9,31 @@ import (
 	"encoding/binary"
 )
 
+const (
+	BufferSize    = 512
+)
+
 func OpenVideo(path string) *Video {
 	videoInfo, audioInfo, _ := ExtractInfo(path)
 	
 	v := &FfmpegRGBAStream{Path : path, I : videoInfo}
 	v.Open()
 	
-	a := &FfmpegPCMStream{Path : path, I : audioInfo}
+	a := &FfmpegPCMStream{Path : path, ReadDepth : 16, I : audioInfo}
 	a.Open()
 	
 	return &Video{v, a}
 }
 
-const (
-	PCMSampleSize = 16
-	BufferSize    = 512
-)
-
 type FfmpegPCMStream struct {
 	Path     string
 	Start    float64
 	Duration float64
+	
+	ReadDepth int
+	ReadSampleRate int
+	ReadChannels int
+	
 	I   *AudioInfo
 	
 	cmd    *exec.Cmd
@@ -73,11 +77,18 @@ func (src *FfmpegPCMStream) Open() (err error) {
 	}
 	
 	args = append(args,
-		"-f", "s16le",
-		"-ar", "44100",
-		"-ac", "2",
-		"-",
+		"-f", fmt.Sprintf("s%vle", src.ReadDepth),
 	)
+	
+	if src.ReadChannels != 0 {
+		args = append(args, "-ac", strconv.FormatInt(src.ReadChannels, 10))
+	}
+	
+	if src.ReadSampleRate != 0 {
+		args = append(args, "-ar", strconv.FormatInt(src.ReadSampleRate, 10))
+	}
+	
+	args = append(args, "-")
 	
 	src.cmd = exec.Command(
 		FfmpegPath,
@@ -109,17 +120,23 @@ func (src *FfmpegPCMStream) Open() (err error) {
 	return nil
 }
 
-func (src *FfmpegPCMStream) ReadSample() (sample []SampleInt16, err error) {
-	o := make([]byte, BufferSize)
-	if _, err = io.ReadFull(src.stdout, o); err != nil {
-		return
-	}
-	byteReader := bytes.NewReader(o)
+func (src *FfmpegPCMStream) ReadSampleBlock() (sample []Sample, err error) {
+	bytesPerSample := src.ReadDepth / 8
 
-	sample = make([]SampleInt16, PCMSampleSize)
-	binary.Read(byteReader, binary.LittleEndian, sample)
+	switch src.ReadDepth {
+		case 16 :
+			sample = make([]SampleInt16, BufferSize / bytesPerSample)
+		case 32 :
+			sample = make([]SampleInt32, BufferSize / bytesPerSample)
+	}
+ 
+	err = binary.Read(src.stdout, binary.LittleEndian, sample)
 
 	return
+}
+
+func (src *FfmpegPCMStream) SampleDepth() int {
+	return src.ReadDepth
 }
 
 func (src *FfmpegPCMStream) Read(p []byte) (int, error) {

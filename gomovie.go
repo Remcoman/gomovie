@@ -17,8 +17,19 @@ func (p SampleInt16) ToFloat() float32 {
 	return float32(p) / float32(32768.)
 }
 
+type SampleInt32 int32
+
+func (p SampleInt32) ToFloat() float32 {
+	return float32(p) / float32(2147483648.)
+}
+
+type Sample interface {
+	ToFloat() float32
+}
+
 type AudioReader interface {
-	ReadSample() ([]SampleInt16, error)
+	ReadSampleBlock() ([]Sample, error) //why no generics?
+	SampleDepth() int
 	Info() *AudioInfo
 	io.Reader
 }
@@ -71,7 +82,6 @@ func FormatSize(width int, height int) string {
 }
 
 func FormatTime(time float64) string {
-	
 	hour := strconv.FormatFloat(math.Floor(time / 3600.), 'f', 0, 32)
 	if len(hour) < 2 {
 		hour = "0" + hour

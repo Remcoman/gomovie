@@ -13,7 +13,8 @@ import (
 )
 
 type Config struct {
-	Codec              string
+	VideoCodec         string
+	AudioCodec		   string
 	ExtraArgs          []string
 	ProgressCallback   func(progress float32)
 	DebugFFmpegOutput  bool
@@ -23,7 +24,7 @@ type Config struct {
 
 func getFifoName() (string, error) {
 	for id := 1; id < 1000; id++ {
-		name := fmt.Sprintf("gomovie_audio_%d", id)
+		name := fmt.Sprintf("gomovie_audio_%v", id)
 		if err := syscall.Mknod(name, syscall.S_IFIFO|0666, 0); err == nil {
 			return name, nil
 		}
@@ -92,11 +93,13 @@ func Encode(path string, src interface{}, config Config) (err error) {
 			}
 			
 			//TODO find a unique fifo name
-			syscall.Mknod(fifoName, syscall.S_IFIFO|0666, 0)
+			if err = syscall.Mknod(fifoName, syscall.S_IFIFO|0666, 0); err != nil {
+				return
+			}
 			
 			defer os.Remove(fifoName)
 
-			go Encode(fifoName, audioSrc, Config{audioResultChan : audioResultChan})
+			go Encode(fifoName, audioSrc, Config{AudioCodec : "s16le", audioResultChan : audioResultChan})
 
 			//audio input
 			args = append(args,
@@ -120,14 +123,14 @@ func Encode(path string, src interface{}, config Config) (err error) {
 	if videoSrc != nil {
 		args = append(args, 
 			"-pix_fmt", "yuv420p",
-			"-vcodec", config.Codec,
+			"-f", config.VideoCodec,
 		)
 		
 		stdinSource = videoSrc
 		
 	} else {
 		args = append(args, 
-			"-f", "s16le",
+			"-f", config.AudioCodec,
 		)
 		
 		stdinSource = audioSrc
