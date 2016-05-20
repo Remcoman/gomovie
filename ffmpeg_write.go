@@ -42,12 +42,13 @@ func Encode(path string, src interface{}, config Config) (err error) {
 		audioResultChan chan bool
 		fifoName string
 	)
-
+	
 	args := make([]string, 0, 25 + len(config.ExtraArgs))
 	
+	//-y means force overwrite
 	args = append(args, "-y")
 	
-	if !config.DebugFFmpegOutput {
+	if !config.DebugFFmpegOutput && config.ProgressCallback != nil {
 		args = append(args,
 			"-progress", "pipe:2",
 			"-v", "panic",
@@ -83,7 +84,15 @@ func Encode(path string, src interface{}, config Config) (err error) {
 		)
 	}
 	
+	//audio has been specified
 	if audioSrc != nil {
+		audioInfo := audioSrc.Info()
+		
+		args = append(args,
+			"-f",  sampleFormat, 
+			"-ar", strconv.FormatInt(int64(audioInfo.SampleRate), 10),
+			"-ac", strconv.FormatInt(int64(audioInfo.Channels), 2),
+		)
 		
 		if videoSrc != nil {
 			audioResultChan = make(chan bool)
@@ -98,29 +107,23 @@ func Encode(path string, src interface{}, config Config) (err error) {
 			}
 			
 			defer os.Remove(fifoName)
+			
+			sampleFormat := fmt.Sprintf("s%vle", audioSrc.SampleDepth())
 
-			go Encode(fifoName, audioSrc, Config{AudioCodec : "s16le", audioResultChan : audioResultChan})
+			go Encode(fifoName, audioSrc, Config{AudioCodec : sampleFormat, audioResultChan : audioResultChan})
 
-			//audio input
-			args = append(args,
-				"-f", "s16le",
-				"-ar", "44100",
-				"-ac", "2",
-				"-i", fifoName,
-			)
+			args = append(args, "-i",  fifoName)
 			
 		} else {
-			args = append(args,
-				"-f", "s16le", 
-				"-ar", "44100",
-				"-ac", "2",
-				"-i", "pipe:0",
-			)
+			
+			args = append(args, "-i",  "pipe:0")
+		
 		}
 		
 	}
 
 	if videoSrc != nil {
+		//output format
 		args = append(args, 
 			"-pix_fmt", "yuv420p",
 			"-f", config.VideoCodec,
@@ -129,6 +132,7 @@ func Encode(path string, src interface{}, config Config) (err error) {
 		stdinSource = videoSrc
 		
 	} else {
+		//output format
 		args = append(args, 
 			"-f", config.AudioCodec,
 		)
@@ -136,7 +140,9 @@ func Encode(path string, src interface{}, config Config) (err error) {
 		stdinSource = audioSrc
 	}
 	
+	//extra output formats
 	args = append(args, config.ExtraArgs...)
+	
 	args = append(args, path)
 	
 	cmd := exec.Command(FfmpegPath, args...)
