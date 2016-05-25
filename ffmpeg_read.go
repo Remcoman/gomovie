@@ -1,47 +1,67 @@
 package gomovie
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"os/exec"
 	"strconv"
-	"bytes"
-	"encoding/binary"
 )
 
 const (
-	BufferSize    = 512
+	BufferSize = 512
+
+	PixelDepth = 4
 )
 
-func OpenVideo(path string) *Video {
-	videoInfo, audioInfo, _ := ExtractInfo(path)
-	
-	v := &FfmpegRGBAStream{Path : path, I : videoInfo}
-	v.Open()
-	
-	a := &FfmpegPCMStream{Path : path, ReadDepth : 16, I : audioInfo}
-	a.Open()
-	
-	return &Video{v, a}
+func FfmpegOpen(path string) (vid *Video, err error) {
+	frameInfo, audioInfo, err := ExtractInfo(path)
+	if err != nil {
+		return
+	}
+
+	var (
+		v *FfmpegRGBAStream
+		a *FfmpegPCMStream
+	)
+
+	if frameInfo != nil {
+		v = &FfmpegRGBAStream{Path: path, I: frameInfo}
+		if err = v.Open(); err != nil {
+			return
+		}
+	}
+
+	if audioInfo != nil {
+		a = &FfmpegPCMStream{Path: path, ReadDepth: 16, I: audioInfo}
+		if err = a.Open(); err != nil {
+			return
+		}
+	}
+
+	vid = &Video{v, a}
+
+	return
 }
 
 type FfmpegPCMStream struct {
 	Path     string
 	Start    float64
 	Duration float64
-	
-	ReadDepth int
+
+	ReadDepth      int
 	ReadSampleRate int
-	ReadChannels int
-	
-	I   *AudioInfo
-	
+	ReadChannels   int
+
+	I *SampleSrcInfo
+
 	cmd    *exec.Cmd
 	stdout io.ReadCloser
 	stderr io.ReadCloser
+	offset int
 }
 
-func (src *FfmpegPCMStream) Info() *AudioInfo {
+func (src *FfmpegPCMStream) Info() *SampleSrcInfo {
 	return src.I
 }
 
@@ -53,46 +73,46 @@ func (src *FfmpegPCMStream) Close() (err error) {
 func (src *FfmpegPCMStream) Open() (err error) {
 	var stderr io.ReadCloser
 	var stdout io.ReadCloser
-	
-	args := []string {
+
+	args := []string{
 		"-loglevel", "error",
-		
+
 		"-i", src.Path,
-		
+
 		"-vn",
 	}
-	
+
 	if src.Start > 0 {
-		args = append(args, 
-			"-ss", 
+		args = append(args,
+			"-ss",
 			strconv.FormatFloat(src.Start, 'f', -1, 32),
 		)
 	}
-	
+
 	if src.Duration > 0 {
 		args = append(args,
 			"-t",
 			strconv.FormatFloat(src.Duration, 'f', -1, 32),
 		)
 	}
-	
+
 	args = append(args,
 		"-f", fmt.Sprintf("s%vle", src.ReadDepth),
 	)
-	
+
 	if src.ReadChannels != 0 {
-		args = append(args, "-ac", strconv.FormatInt(src.ReadChannels, 10))
+		args = append(args, "-ac", strconv.FormatInt(int64(src.ReadChannels), 10))
 	}
-	
+
 	if src.ReadSampleRate != 0 {
-		args = append(args, "-ar", strconv.FormatInt(src.ReadSampleRate, 10))
+		args = append(args, "-ar", strconv.FormatInt(int64(src.ReadSampleRate), 10))
 	}
-	
+
 	args = append(args, "-")
-	
+
 	src.cmd = exec.Command(
-		FfmpegPath,
-		args...,	
+		GlobalConfig.FfmpegPath,
+		args...,
 	)
 
 	if stderr, err = src.cmd.StderrPipe(); err != nil {
@@ -120,19 +140,35 @@ func (src *FfmpegPCMStream) Open() (err error) {
 	return nil
 }
 
-func (src *FfmpegPCMStream) ReadSampleBlock() (sample []Sample, err error) {
+func (src *FfmpegPCMStream) ReadSampleBlock() (*SampleBlock, error) {
 	bytesPerSample := src.ReadDepth / 8
 
-	switch src.ReadDepth {
-		case 16 :
-			sample = make([]SampleInt16, BufferSize / bytesPerSample)
-		case 32 :
-			sample = make([]SampleInt32, BufferSize / bytesPerSample)
-	}
- 
-	err = binary.Read(src.stdout, binary.LittleEndian, sample)
+	var sampleData interface{}
 
-	return
+	switch src.ReadDepth {
+	case 16:
+		sampleData = make([]SampleInt16, BufferSize/bytesPerSample)
+	case 32:
+		sampleData = make([]SampleInt32, BufferSize/bytesPerSample)
+	}
+
+	if err := binary.Read(src.stdout, binary.LittleEndian, sampleData); err != nil {
+		return nil, err
+	}
+
+	a := float32(bytesPerSample*src.I.SampleRate) / float32(src.I.Channels)
+
+	//44100 samples per second. 2 bytes (16 bit) per sample
+	time := float32(src.offset) / a
+	duration := float32(BufferSize) / a
+
+	src.offset += BufferSize
+
+	return &SampleBlock{
+		Data:     sampleData,
+		Time:     time,
+		Duration: duration,
+	}, nil
 }
 
 func (src *FfmpegPCMStream) SampleDepth() int {
@@ -143,17 +179,16 @@ func (src *FfmpegPCMStream) Read(p []byte) (int, error) {
 	return src.stdout.Read(p)
 }
 
-
 type FfmpegRGBAStream struct {
-	Path   string
-	Start float64
-	Duration float64
-	I   *VideoInfo
-	
+	Path     string
+	Start    float32
+	Duration float32
+	I        *FrameSrcInfo
+
 	cmd    *exec.Cmd
 	stdout io.ReadCloser
 	stderr io.ReadCloser
-	index  int
+	offset int64
 }
 
 func (g *FfmpegRGBAStream) Close() (err error) {
@@ -162,47 +197,48 @@ func (g *FfmpegRGBAStream) Close() (err error) {
 }
 
 func (g *FfmpegRGBAStream) Open() (err error) {
-	var stderr io.ReadCloser
-	var stdout io.ReadCloser
-	
+	var (
+		stdout, stderr io.ReadCloser
+	)
+
 	args := []string{
 		"-loglevel", "error",
-		
+
 		"-i", g.Path,
-		
+
 		"-f", "image2pipe",
 		"-pix_fmt", "rgba",
 		"-vcodec", "rawvideo",
 	}
-	
+
 	if g.Start > 0 {
-		args = append(args, 
-			"-ss", 
-			strconv.FormatFloat(g.Start, 'f', -1, 32),
+		args = append(args,
+			"-ss",
+			strconv.FormatFloat(float64(g.Start), 'f', -1, 32),
 		)
 	}
-	
+
 	if g.Duration > 0 {
 		args = append(args,
 			"-t",
-			strconv.FormatFloat(g.Duration, 'f', -1, 32),
+			strconv.FormatFloat(float64(g.Duration), 'f', -1, 32),
 		)
 	}
-	
+
 	args = append(args, "-")
 
-	g.cmd = exec.Command(FfmpegPath, args...)
+	g.cmd = exec.Command(GlobalConfig.FfmpegPath, args...)
 
 	if stderr, err = g.cmd.StderrPipe(); err != nil {
 		return
-	} 
-	
+	}
+
 	g.stderr = stderr
 
 	if stdout, err = g.cmd.StdoutPipe(); err != nil {
 		return
 	}
-	
+
 	g.stdout = stdout
 
 	if err := g.cmd.Start(); err != nil {
@@ -218,35 +254,43 @@ func (g *FfmpegRGBAStream) Open() (err error) {
 	return nil
 }
 
-func (g *FfmpegRGBAStream) Read(p []byte) (int, error) {
-	return g.stdout.Read(p)
+func (g *FfmpegRGBAStream) Read(p []byte) (n int, err error) {
+	r, err := g.stdout.Read(p)
+	g.offset += int64(r)
+	return
 }
 
-func (g *FfmpegRGBAStream) Info() *VideoInfo {
+func (g *FfmpegRGBAStream) Info() *FrameSrcInfo {
 	return g.I
 }
 
 func (g *FfmpegRGBAStream) ReadFrame() (*Frame, error) {
-	bytes := make([]byte, 4*g.I.Width*g.I.Height)
-	time := float64(g.index) * float64(1./g.I.FrameRate)
-	
+	frameBytes := make([]byte, PixelDepth*g.I.Width*g.I.Height)
+	frameIndex := int(g.offset / int64(len(frameBytes)))
+
+	time := float32(frameIndex) * float32(1./g.I.FrameRate)
+
 	if g.Duration != 0 && time > g.Duration {
 		return nil, io.EOF
 	}
 
-	if n, err := io.ReadFull(g.stdout, bytes); err != nil {
-		if n == 0 { //got invalid file descriptor (ffmpeg autocloses stdout?)
+	r, err := io.ReadFull(g.stdout, frameBytes)
+
+	if err != nil {
+		if r == 0 { //got invalid file descriptor (ffmpeg autocloses stdout?)
 			err = io.EOF
 		}
+
 		return nil, err
 	}
 
-	g.index = g.index + 1
+	g.offset += int64(r)
 
 	return &Frame{
-		Bytes:  bytes,
+		Data:   frameBytes,
 		Width:  g.I.Width,
 		Height: g.I.Height,
-		Index:  g.index,
+		Index:  frameIndex,
+		Time:   time,
 	}, nil
 }

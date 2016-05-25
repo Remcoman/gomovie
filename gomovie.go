@@ -1,101 +1,149 @@
 package gomovie
 
 import (
-	"fmt"
-	"math"
-	"strconv"
 	"image"
 	"io"
 )
 
-var FfmpegPath string = "/usr/bin/ffmpeg"
-var FfprobePath string = "/usr/bin/ffprobe"
+var GlobalConfig = struct {
+	FfmpegPath  string
+	FfprobePath string
+}{
+	FfmpegPath:  "/usr/bin/ffmpeg",
+	FfprobePath: "/usr/bin/ffprobe",
+}
 
+//SampleInt16 describes a single 16 bit sample
 type SampleInt16 int16
 
-func (p SampleInt16) ToFloat() float32 {
+//ToFloat Normalizes the sample to a value between -1 and 1
+func (p SampleInt16) Float() float32 {
 	return float32(p) / float32(32768.)
 }
 
+//SampleInt32 describes a single 32 bit sample
 type SampleInt32 int32
 
-func (p SampleInt32) ToFloat() float32 {
+//ToFloat Normalizes the sample to a value between -1 and 1
+func (p SampleInt32) Float() float32 {
 	return float32(p) / float32(2147483648.)
 }
 
 type Sample interface {
-	ToFloat() float32
+	Float() float32
 }
 
-type AudioReader interface {
-	ReadSampleBlock() ([]Sample, error) //why no generics?
+type SampleBlock struct {
+	Data     interface{}
+	Time     float32
+	Duration float32
+}
+
+func (sb *SampleBlock) ConvertFloats(fn func(i int, f float32) float32) {
+	switch t := sb.Data.(type) {
+	case []SampleInt16:
+		for i, v := range t {
+			t[i] = SampleInt16(fn(i, v.Float()) * 32768.)
+		}
+	case []SampleInt32:
+		for i, v := range t {
+			t[i] = SampleInt32(fn(i, v.Float()) * 2147483648.)
+		}
+	}
+}
+
+//SampleReader describes an interface to read audio sample blocks
+type SampleReader interface {
+
+	//read a single sample block in the format SampleInt16 or SampleInt32 (depending on SampleDepth)
+	ReadSampleBlock() (*SampleBlock, error)
+
+	//the sample bit depth
 	SampleDepth() int
-	Info() *AudioInfo
-	io.Reader
+
+	//information about the sample format and src
+	Info() *SampleSrcInfo
+
+	io.ReadCloser
 }
 
+//Frame describes a single rgba frame
 type Frame struct {
-	Bytes  []byte
+	Data   []byte
 	Width  int
 	Height int
 	Index  int
+	Time   float32
 }
 
-func (f *Frame) String() string {
-	return fmt.Sprintf("Index: %d, Width: %d, Height: %d", f.Index, f.Width, f.Height)
-}
-
+//ToNRGBAImage converts the frame to a image.NRGBA
 func (f *Frame) ToNRGBAImage() *image.NRGBA {
 	return &image.NRGBA{
-		Pix:    f.Bytes,
+		Pix:    f.Data,
 		Stride: f.Width * 4,
 		Rect:   image.Rect(0, 0, f.Width, f.Height),
 	}
 }
 
-type VideoReader interface {
+//FrameSrcInfo contains information about an Video stream in a video file
+type FrameSrcInfo struct {
+	CodecName string
+	Width     int
+	Height    int
+	Rotation  int
+	FrameRate float32
+	Duration  float32
+}
+
+//SampleSrcInfo contains information about an Audio stream in a video file
+type SampleSrcInfo struct {
+	CodecName  string
+	Duration   float32
+	SampleRate int
+	Channels   int
+}
+
+//FrameReader describes an interface to read frames from a video
+type FrameReader interface {
+	//Read a single frame from the framereader
 	ReadFrame() (*Frame, error)
-	Info() *VideoInfo
-	
-	io.Reader
+
+	//Get information about the frame format and src
+	Info() *FrameSrcInfo
+
+	io.ReadCloser
 }
 
+//Video wraps the FrameReader and SampleReader
 type Video struct {
-	VideoReader
-	AudioReader
+	FrameReader
+	SampleReader
 }
 
-func (v *Video) Info() (videoInfo *VideoInfo, audioInfo *AudioInfo) {
-	if v.VideoReader != nil {
-		videoInfo = v.VideoReader.Info()
+//Info returns information about the FrameReader and SampleReader
+func (v *Video) Info() (frameInfo *FrameSrcInfo, audioInfo *SampleSrcInfo) {
+	if v.FrameReader != nil {
+		frameInfo = v.FrameReader.Info()
 	}
-	
-	if v.AudioReader != nil {
-		audioInfo = v.AudioReader.Info()
+
+	if v.SampleReader != nil {
+		audioInfo = v.SampleReader.Info()
 	}
-	
+
 	return
 }
 
-func FormatSize(width int, height int) string {
-	return fmt.Sprintf("%dx%d", width, height)
-}
-
-func FormatTime(time float64) string {
-	hour := strconv.FormatFloat(math.Floor(time / 3600.), 'f', 0, 32)
-	if len(hour) < 2 {
-		hour = "0" + hour
+//Close closes both the FrameReader and SampleReader
+func (v *Video) Close() (err error) {
+	if v.FrameReader != nil {
+		if err = v.FrameReader.Close(); err != nil {
+			return
+		}
 	}
 
-	min := strconv.FormatFloat(math.Mod(math.Floor(time/60.), 60.), 'f', 0, 32)
-	if len(min) < 2 {
-		min = "0" + min
+	if v.SampleReader != nil {
+		err = v.SampleReader.Close()
 	}
 
-	seconds := strconv.FormatFloat(math.Mod(time, 60), 'f', 0, 32)
-	if len(seconds) < 2 {
-		seconds = "0" + seconds
-	}
-
-	return hour + ":" + min + ":" + seconds
+	return
 }

@@ -3,48 +3,11 @@ package gomovie
 import (
 	"encoding/json"
 	"log"
+	"math"
 	"os/exec"
 	"strconv"
 	"strings"
-	"math"
-	"fmt"
 )
-
-type VideoInfo struct {
-	CodecName string
-	Width     int
-	Height    int
-	Rotation  int
-	FrameRate float32
-	Duration   float32
-}
-
-func (i VideoInfo) String() string {
-	return fmt.Sprintf("CodecName: %s, Duration: %f, Width: %d, Height : %d, Framerate : %f, Rotation: %d",
-		i.CodecName,
-		i.Duration,
-		i.Width, 
-		i.Height,  
-		i.FrameRate,
-		i.Rotation,
-	)
-}
-
-type AudioInfo struct {
-	CodecName string
-	Duration  float32
-	SampleRate int
-	Channels int
-}
-
-func (i AudioInfo) String() string {
-	return fmt.Sprintf("CodecName: %s, Duration: %f, SampleRate: %d, Channels: %d",
-		i.CodecName,
-		i.Duration,
-		i.SampleRate,
-		i.Channels,
-	)
-}
 
 type FFProbeFormat struct {
 	Filename string
@@ -57,17 +20,17 @@ func (f FFProbeFormat) FloatDuration() float32 {
 }
 
 type FFProbeStream struct {
-	Codec_name	   string
-	
-	Sample_rate	   string
-	Channels	   int
-	
+	Codec_name string
+
+	Sample_rate string
+	Channels    int
+
 	Width          int
 	Height         int
 	Avg_frame_rate string
 	Codec_type     string
 	Side_data_list []interface{}
-	Tags		   map[string]interface{}
+	Tags           map[string]interface{}
 }
 
 func (f FFProbeStream) IntSampleRate() int {
@@ -82,11 +45,11 @@ func (f FFProbeStream) Rotation() int {
 			sideDataEl := v.(map[string]interface{})
 
 			sideDataType := sideDataEl["side_data_type"].(string)
-			
+
 			if sideDataType != "Display Matrix" {
 				continue
 			}
-			
+
 			return int(sideDataEl["rotation"].(float64))
 		}
 	} else {
@@ -121,9 +84,9 @@ func (o *FFProbeOutput) StreamByType(typeId string) *FFProbeStream {
 	return nil
 }
 
-func ExtractInfo(path string) (videoInfo *VideoInfo, audioInfo *AudioInfo, err error) {
+func ExtractInfo(path string) (frameInfo *FrameSrcInfo, audioInfo *SampleSrcInfo, err error) {
 	cmd := exec.Command(
-		FfprobePath,
+		GlobalConfig.FfprobePath,
 
 		"-i", path,
 
@@ -136,7 +99,7 @@ func ExtractInfo(path string) (videoInfo *VideoInfo, audioInfo *AudioInfo, err e
 	)
 
 	bytes, err := cmd.Output()
-	
+
 	if err != nil {
 		return
 	}
@@ -145,7 +108,7 @@ func ExtractInfo(path string) (videoInfo *VideoInfo, audioInfo *AudioInfo, err e
 	if err = json.Unmarshal(bytes, &out); err != nil {
 		return
 	}
-	
+
 	if videoStream := out.StreamByType("video"); videoStream != nil {
 		rotation := videoStream.Rotation()
 		width := int(videoStream.Width)
@@ -154,10 +117,10 @@ func ExtractInfo(path string) (videoInfo *VideoInfo, audioInfo *AudioInfo, err e
 		if math.Abs(math.Mod(float64(rotation), 180.)) == 90 {
 			oldWidth := width
 			width = height
-			height = oldWidth 	
+			height = oldWidth
 		}
-		
-		videoInfo = &VideoInfo{
+
+		frameInfo = &FrameSrcInfo{
 			CodecName: videoStream.Codec_name,
 			FrameRate: videoStream.FloatFrameRate(),
 			Width:     width,
@@ -166,13 +129,13 @@ func ExtractInfo(path string) (videoInfo *VideoInfo, audioInfo *AudioInfo, err e
 			Duration:  out.Format.FloatDuration(),
 		}
 	}
-	
+
 	if audioStream := out.StreamByType("audio"); audioStream != nil {
-		audioInfo = &AudioInfo{
-			CodecName: audioStream.Codec_name,
-			SampleRate: audioStream.IntSampleRate(), 
-			Duration:  out.Format.FloatDuration(),
-			Channels: audioStream.Channels,
+		audioInfo = &SampleSrcInfo{
+			CodecName:  audioStream.Codec_name,
+			SampleRate: audioStream.IntSampleRate(),
+			Duration:   out.Format.FloatDuration(),
+			Channels:   audioStream.Channels,
 		}
 	}
 
