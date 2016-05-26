@@ -3,7 +3,24 @@ package gomovie
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
+	"sort"
+	"sync"
 )
+
+type sortedFrames []*Frame
+
+func (s sortedFrames) Len() int {
+	return len(s)
+}
+
+func (s sortedFrames) Less(i int, j int) bool {
+	return s[i].Index < s[j].Index
+}
+
+func (s sortedFrames) Swap(i int, j int) {
+	s[i], s[j] = s[j], s[i]
+}
 
 // FrameTransform Describes the frame transform operation. Each transform should modify the Bytes field.
 // The resize operation is optional and is called before the transform. The resize operation should modify the Width and Height of the frame.
@@ -15,7 +32,7 @@ type FrameTransform struct {
 // NewFrameTransformer convenience constructor to create a new FrameTransformer from a Video or an FrameReader
 func NewFrameTransformer(src interface{}) FrameTransformer {
 	switch t := src.(type) {
-	case Video:
+	case VideoReader:
 		return FrameTransformer{FrameReader: t.FrameReader}
 	case FrameReader:
 		return FrameTransformer{FrameReader: t}
@@ -49,25 +66,50 @@ func (ft *FrameTransformer) applyTransforms(f *Frame) {
 }
 
 func (ft *FrameTransformer) Read(p []byte) (int, error) {
-	// r := [5]*Frame
+	todo := make([]*Frame, 0, 5)
 
-	// for i := 0; i < 5; i++ {
-	// 	f, err := ft.FrameReader.ReadFrame()
-	// 	if err != nil {
-	// 		break
-	// 	}
-	// 	r[i] =
-	// }
-
-	//out := make(chan *Frame, 5)
-
-	//stuff the channel with x frames & process the frames in parallel? & output the result ordered
-
-	fr, err := ft.ReadFrame()
-	if err != nil {
-		return 0, err
+	//sequentally read some frames
+	for i := 0; i < 4; i++ {
+		f, err := ft.FrameReader.ReadFrame()
+		if err != nil {
+			break
+		}
+		todo = append(todo, f)
 	}
-	return copy(p, fr.Data), nil
+
+	if len(todo) == 0 {
+		return 0, errors.New("Could not read any frames!")
+	}
+
+	var wait sync.WaitGroup
+	wait.Add(len(todo))
+
+	done := make(chan *Frame)
+	for _, f := range todo {
+		go func(f Frame) {
+			defer wait.Done()
+			fp := &f
+			ft.applyResizes(fp)
+			ft.applyTransforms(fp)
+			done <- fp
+		}(*f)
+	}
+
+	wait.Wait()
+	close(done)
+
+	sorted := make(sortedFrames, 0, 5)
+	for x := range done {
+		sorted = append(sorted, x)
+	}
+	sort.Sort(sorted)
+
+	total := 0
+	for _, f := range sorted {
+		total += copy(p, f.Data)
+	}
+
+	return total, nil
 }
 
 func (ft *FrameTransformer) ReadFrame() (*Frame, error) {
@@ -89,7 +131,7 @@ type SampleTransform struct {
 
 func NewSampleTransformer(src interface{}) SampleTransformer {
 	switch t := src.(type) {
-	case Video:
+	case VideoReader:
 		return SampleTransformer{SampleReader: t.SampleReader}
 	case SampleReader:
 		return SampleTransformer{SampleReader: t}

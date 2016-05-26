@@ -14,7 +14,7 @@ const (
 	PixelDepth = 4
 )
 
-func FfmpegOpen(path string) (vid *Video, err error) {
+func FfmpegOpen(path string) (vid *VideoReader, err error) {
 	frameInfo, audioInfo, err := ExtractInfo(path)
 	if err != nil {
 		return
@@ -39,7 +39,7 @@ func FfmpegOpen(path string) (vid *Video, err error) {
 		}
 	}
 
-	vid = &Video{v, a}
+	vid = &VideoReader{v, a}
 
 	return
 }

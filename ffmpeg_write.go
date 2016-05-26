@@ -62,7 +62,7 @@ func FfmpegWrite(path string, src interface{}, config WriteConfig) (err error) {
 	case SampleReader:
 		sampleReader = t
 
-	case *Video:
+	case *VideoReader:
 		frameReader = t.FrameReader
 		sampleReader = t.SampleReader
 
