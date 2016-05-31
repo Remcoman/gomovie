@@ -1,8 +1,10 @@
-package gomovie
+package gomovie_test
 
 import (
 	"os"
 	"testing"
+
+	"github.com/Remcoman/gomovie"
 )
 
 func TestInfo(t *testing.T) {
@@ -11,7 +13,7 @@ func TestInfo(t *testing.T) {
 		t.Fatal("GOMOVIE_VIDEO not set!")
 	}
 
-	if frameInfo, audioInfo, err := ExtractInfo(video); err != nil {
+	if frameInfo, audioInfo, err := gomovie.ExtractInfo(video); err != nil {
 		t.Fatal(err)
 	} else {
 

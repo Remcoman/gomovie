@@ -1,8 +1,10 @@
-package gomovie
+package gomovie_test
 
 import (
 	"os"
 	"testing"
+
+	"github.com/Remcoman/gomovie"
 )
 
 func TestOpenVideo(t *testing.T) {
@@ -11,7 +13,7 @@ func TestOpenVideo(t *testing.T) {
 		t.Fatal("GOMOVIE_VIDEO not set!")
 	}
 
-	_, err := FfmpegOpen(path)
+	_, err := gomovie.FfmpegOpen(path)
 	if err != nil {
 		t.Fatal("Could not open video")
 	}

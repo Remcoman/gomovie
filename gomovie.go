@@ -115,13 +115,13 @@ type FrameReader interface {
 }
 
 //Video wraps the FrameReader and SampleReader
-type VideoReader struct {
+type Video struct {
 	FrameReader
 	SampleReader
 }
 
 //Info returns information about the FrameReader and SampleReader
-func (v *VideoReader) Info() (frameInfo *FrameSrcInfo, audioInfo *SampleSrcInfo) {
+func (v *Video) Info() (frameInfo *FrameSrcInfo, audioInfo *SampleSrcInfo) {
 	if v.FrameReader != nil {
 		frameInfo = v.FrameReader.Info()
 	}
@@ -134,7 +134,7 @@ func (v *VideoReader) Info() (frameInfo *FrameSrcInfo, audioInfo *SampleSrcInfo)
 }
 
 //Close closes both the FrameReader and SampleReader
-func (v *VideoReader) Close() (err error) {
+func (v *Video) Close() (err error) {
 	if v.FrameReader != nil {
 		if err = v.FrameReader.Close(); err != nil {
 			return

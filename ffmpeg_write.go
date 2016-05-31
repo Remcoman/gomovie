@@ -62,12 +62,12 @@ func FfmpegWrite(path string, src interface{}, config WriteConfig) (err error) {
 	case SampleReader:
 		sampleReader = t
 
-	case *VideoReader:
+	case *Video:
 		frameReader = t.FrameReader
 		sampleReader = t.SampleReader
 
 	default:
-		return errors.New("Invalid type!")
+		return errors.New("Can't write given object. It should implement FrameReader or SampleReader. Or it should be of type *Video")
 	}
 
 	//video has been specified
@@ -185,6 +185,7 @@ func FfmpegWrite(path string, src interface{}, config WriteConfig) (err error) {
 
 	err = cmd.Wait()
 
+	//signal the audio channel to close
 	if audioResultChan != nil {
 		audioResultChan <- true
 	}

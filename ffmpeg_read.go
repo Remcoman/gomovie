@@ -14,7 +14,7 @@ const (
 	PixelDepth = 4
 )
 
-func FfmpegOpen(path string) (vid *VideoReader, err error) {
+func FfmpegOpen(path string) (vid *Video, err error) {
 	frameInfo, audioInfo, err := ExtractInfo(path)
 	if err != nil {
 		return
@@ -39,7 +39,7 @@ func FfmpegOpen(path string) (vid *VideoReader, err error) {
 		}
 	}
 
-	vid = &VideoReader{v, a}
+	vid = &Video{v, a}
 
 	return
 }
@@ -153,6 +153,12 @@ func (src *FfmpegPCMStream) ReadSampleBlock() (*SampleBlock, error) {
 	}
 
 	if err := binary.Read(src.stdout, binary.LittleEndian, sampleData); err != nil {
+
+		//process was already closed but we are still trying to read from it
+		if src.cmd.ProcessState != nil {
+			return nil, io.EOF
+		}
+
 		return nil, err
 	}
 
