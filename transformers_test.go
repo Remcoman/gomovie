@@ -8,8 +8,6 @@ import (
 )
 
 func TestTransformFrames(t *testing.T) {
-	return
-
 	path := os.Getenv("GOMOVIE_VIDEO")
 	if path == "" {
 		t.Fatal("GOMOVIE_VIDEO not set!")
@@ -43,6 +41,8 @@ func TestTransformFrames(t *testing.T) {
 }
 
 func TestTransformSamples(t *testing.T) {
+	return
+
 	path := os.Getenv("GOMOVIE_VIDEO")
 	if path == "" {
 		t.Fatal("GOMOVIE_VIDEO not set!")
@@ -58,7 +58,7 @@ func TestTransformSamples(t *testing.T) {
 	sampleTransformer := gomovie.NewSampleTransformer(video)
 
 	sampleTransformer.AddTransform(gomovie.SampleTransform{
-		Transform: func(s *gomovie.SampleBlock, depth int) {
+		Transform: func(s *gomovie.SampleBlock) {
 			s.ConvertFloats(func(i int, f float32) float32 {
 				return f * .5
 			})

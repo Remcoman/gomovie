@@ -87,7 +87,7 @@ func FfmpegWrite(path string, src interface{}, config WriteConfig) (err error) {
 	//audio has been specified
 	if sampleReader != nil {
 		audioInfo := sampleReader.Info()
-		sampleFormat := fmt.Sprintf("s%vle", sampleReader.SampleDepth())
+		sampleFormat := fmt.Sprintf("s%vle", sampleReader.SampleFormat().Depth)
 
 		args = append(args,
 			"-f", sampleFormat,

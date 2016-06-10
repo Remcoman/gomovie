@@ -202,7 +202,7 @@ func (ft *FrameTransformer) process(parallel int) {
 
 // SampleTransform Describes the sample transform operation. Each transform should modify the SampleBlock.
 type SampleTransform struct {
-	Transform func(s *SampleBlock, depth int)
+	Transform func(s *SampleBlock)
 }
 
 // NewSampleTransformer convenience constructor to create a new SampleTransformer from a Video or an SampleReader
@@ -220,7 +220,10 @@ func NewSampleTransformer(src interface{}) *SampleTransformer {
 // SampleTransformer applies a transform to each sample block. Great for audio editing. implements the SampleReader interface.
 type SampleTransformer struct {
 	SampleReader
+
 	transforms []SampleTransform
+
+	sbData []byte
 }
 
 // AddTransform appends a transform to the frame transform list
@@ -230,26 +233,32 @@ func (ft *SampleTransformer) AddTransform(f SampleTransform) *SampleTransformer 
 }
 
 func (ft *SampleTransformer) applyTransforms(s *SampleBlock) {
-	depth := ft.SampleDepth()
 	for _, transform := range ft.transforms {
-		transform.Transform(s, depth)
+		transform.Transform(s)
 	}
 }
 
 func (ft *SampleTransformer) Read(p []byte) (int, error) {
-	sb, err := ft.ReadSampleBlock()
-	if err != nil {
-		return 0, err
+	if len(ft.sbData) == 0 {
+		sb, err := ft.ReadSampleBlock()
+		if err != nil {
+			return 0, err
+		}
+
+		//this will convert the sample block data to bytes
+		buf := new(bytes.Buffer)
+		binary.Write(buf, binary.LittleEndian, sb.Data)
+
+		ft.sbData = buf.Bytes()
 	}
 
-	//write int16 data to byte array
-	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.LittleEndian, sb.Data)
+	n := copy(p, ft.sbData)
+	ft.sbData = ft.sbData[n:]
 
-	return copy(p, buf.Bytes()), nil
+	return n, nil
 }
 
-//Read a single sampleblock which contains an array of int16 or int32 values (depending on the SampleFormat)
+//ReadSampleBlock Read a single sampleblock which contains an array of int16 or int32 values (depending on the SampleFormat)
 func (ft *SampleTransformer) ReadSampleBlock() (*SampleBlock, error) {
 	sb, err := ft.SampleReader.ReadSampleBlock()
 	if err != nil {

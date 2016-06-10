@@ -1,117 +1,58 @@
 package gomovie
 
 import (
-	"image"
-	"io"
+	"errors"
 )
 
 var GlobalConfig = struct {
-	FfmpegPath  string
-	FfprobePath string
+	FfmpegPath      string
+	FfprobePath     string
+	SampleBlockSize int
+	FramePixelDepth int
 }{
-	FfmpegPath:  "/usr/bin/ffmpeg",
-	FfprobePath: "/usr/bin/ffprobe",
+	FfmpegPath:      "/usr/bin/ffmpeg",
+	FfprobePath:     "/usr/bin/ffprobe",
+	SampleBlockSize: 512,
+	FramePixelDepth: 4,
 }
 
-//SampleInt16 describes a single 16 bit sample
-type SampleInt16 int16
+var emptyReaderError = errors.New("Duration of 0 is not allowed")
 
-//ToFloat Normalizes the sample to a value between -1 and 1
-func (p SampleInt16) Float() float32 {
-	return float32(p) / float32(32768.)
-}
+type Range struct {
+	parent *Range
 
-//SampleInt32 describes a single 32 bit sample
-type SampleInt32 int32
-
-//ToFloat Normalizes the sample to a value between -1 and 1
-func (p SampleInt32) Float() float32 {
-	return float32(p) / float32(2147483648.)
-}
-
-type Sample interface {
-	Float() float32
-}
-
-type SampleBlock struct {
-	Data     interface{}
-	Time     float32
+	Start    float32
 	Duration float32
 }
 
-func (sb *SampleBlock) ConvertFloats(fn func(i int, f float32) float32) {
-	switch t := sb.Data.(type) {
-	case []SampleInt16:
-		for i, v := range t {
-			t[i] = SampleInt16(fn(i, v.Float()) * 32768.)
-		}
-	case []SampleInt32:
-		for i, v := range t {
-			t[i] = SampleInt32(fn(i, v.Float()) * 2147483648.)
+func (r *Range) Intersection(r2 *Range) *Range {
+	e1 := r.Start + r.Duration
+	e2 := r2.Start + r2.Duration
+
+	e := e1
+	if e2 < e1 {
+		e = e2
+	}
+
+	s := r.Start
+	if r2.Start > r.Start {
+		s = r2.Start
+		if s > e {
+			s = e
 		}
 	}
+
+	return &Range{Start: s, Duration: e - s}
 }
 
-//SampleReader describes an interface to read audio sample blocks
-type SampleReader interface {
-
-	//read a single sample block in the format SampleInt16 or SampleInt32 (depending on SampleDepth)
-	ReadSampleBlock() (*SampleBlock, error)
-
-	//the sample bit depth
-	SampleDepth() int
-
-	//information about the sample format and src
-	Info() *SampleSrcInfo
-
-	io.ReadCloser
-}
-
-//Frame describes a single rgba frame
-type Frame struct {
-	Data   []byte
-	Width  int
-	Height int
-	Index  int
-	Time   float32
-}
-
-//ToNRGBAImage converts the frame to a image.NRGBA
-func (f *Frame) ToNRGBAImage() *image.NRGBA {
-	return &image.NRGBA{
-		Pix:    f.Data,
-		Stride: f.Width * 4,
-		Rect:   image.Rect(0, 0, f.Width, f.Height),
+func (r *Range) AbsStart() float32 {
+	i := r
+	var s float32
+	for i != nil {
+		s += i.Start
+		i = i.parent
 	}
-}
-
-//FrameSrcInfo contains information about an Video stream in a video file
-type FrameSrcInfo struct {
-	CodecName string
-	Width     int
-	Height    int
-	Rotation  int
-	FrameRate float32
-	Duration  float32
-}
-
-//SampleSrcInfo contains information about an Audio stream in a video file
-type SampleSrcInfo struct {
-	CodecName  string
-	Duration   float32
-	SampleRate int
-	Channels   int
-}
-
-//FrameReader describes an interface to read frames from a video
-type FrameReader interface {
-	//Read a single frame from the framereader
-	ReadFrame() (*Frame, error)
-
-	//Get information about the frame format and src
-	Info() *FrameSrcInfo
-
-	io.ReadCloser
+	return s
 }
 
 //Video wraps the FrameReader and SampleReader
@@ -120,14 +61,18 @@ type Video struct {
 	SampleReader
 }
 
+func (v *Video) Slice(r *Range) (*Video, error) {
+	return &Video{v.FrameReader.Slice(r), v.SampleReader.Slice(r)}, nil
+}
+
 //Info returns information about the FrameReader and SampleReader
-func (v *Video) Info() (frameInfo *FrameSrcInfo, audioInfo *SampleSrcInfo) {
+func (v *Video) Info() (frameReaderInfo *FrameReaderInfo, sampleReaderInfo *SampleReaderInfo) {
 	if v.FrameReader != nil {
-		frameInfo = v.FrameReader.Info()
+		frameReaderInfo = v.FrameReader.Info()
 	}
 
 	if v.SampleReader != nil {
-		audioInfo = v.SampleReader.Info()
+		sampleReaderInfo = v.SampleReader.Info()
 	}
 
 	return

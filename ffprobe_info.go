@@ -54,8 +54,11 @@ func (f FFProbeStream) Rotation() int {
 		}
 	} else {
 		if f.Tags != nil {
-			if rotate, err := strconv.ParseInt(f.Tags["rotate"].(string), 10, 32); err == nil && rotate != 0 {
-				log.Print("Rotate tag found but display matrix seems missing. It seems you are using a old ffmpeg version?")
+			rotateStr, ok := f.Tags["rotate"].(string)
+			if ok {
+				if rotateInt, err := strconv.ParseInt(rotateStr, 10, 32); err == nil && rotateInt != 0 {
+					log.Print("Rotate tag found but display matrix seems missing. It seems you are using a old ffmpeg version?")
+				}
 			}
 		}
 	}
@@ -84,7 +87,7 @@ func (o *FFProbeOutput) StreamByType(typeId string) *FFProbeStream {
 	return nil
 }
 
-func ExtractInfo(path string) (frameInfo *FrameSrcInfo, audioInfo *SampleSrcInfo, err error) {
+func ExtractInfo(path string) (frameInfo *FrameReaderInfo, audioInfo *SampleReaderInfo, err error) {
 	cmd := exec.Command(
 		GlobalConfig.FfprobePath,
 
@@ -120,7 +123,7 @@ func ExtractInfo(path string) (frameInfo *FrameSrcInfo, audioInfo *SampleSrcInfo
 			height = oldWidth
 		}
 
-		frameInfo = &FrameSrcInfo{
+		frameInfo = &FrameReaderInfo{
 			CodecName: videoStream.Codec_name,
 			FrameRate: videoStream.FloatFrameRate(),
 			Width:     width,
@@ -131,7 +134,7 @@ func ExtractInfo(path string) (frameInfo *FrameSrcInfo, audioInfo *SampleSrcInfo
 	}
 
 	if audioStream := out.StreamByType("audio"); audioStream != nil {
-		audioInfo = &SampleSrcInfo{
+		audioInfo = &SampleReaderInfo{
 			CodecName:  audioStream.Codec_name,
 			SampleRate: audioStream.IntSampleRate(),
 			Duration:   out.Format.FloatDuration(),
